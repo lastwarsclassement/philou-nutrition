@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Philou · Plan déficit</title>
+<meta name="description" content="Plan de déficit calorique, journal des repas, suivi du poids et tableau des aliments (Ciqual 2025).">
+<meta name="theme-color" content="#FFF7EC">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥦</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Chargement -->
+<div class="screen" id="scrLoading"><p><span class="spinner"></span> Chargement…</p></div>
+
+<!-- Config manquante -->
+<div class="screen hidden" id="scrConfig">
+  <div class="card">
+    <h1>⚙️ Presque prêt</h1>
+    <p>Le site n'est pas encore relié à Supabase. Renseigne <code>SUPABASE_URL</code> et <code>SUPABASE_KEY</code> dans le fichier <code>config.js</code>.</p>
+  </div>
+</div>
+
+<!-- Connexion -->
+<div class="screen hidden" id="scrAuth">
+  <div class="card">
+    <div style="font-size:2.6rem;line-height:1">🥦🍗🍚</div>
+    <h1>Plan déficit</h1>
+    <p class="muted" style="margin:0">Connecte-toi pour retrouver ton journal et ton suivi de poids sur tous tes appareils.</p>
+    <form class="auth-form" id="authForm">
+      <label class="field">E-mail<input type="email" id="aEmail" autocomplete="email" required></label>
+      <label class="field">Mot de passe<input type="password" id="aPass" autocomplete="current-password" minlength="6" required></label>
+      <div class="auth-actions">
+        <button class="btn primary" type="submit" id="aLogin">Se connecter</button>
+        <button class="btn" type="button" id="aSignup">Créer un compte</button>
+      </div>
+      <p class="msg" id="aMsg"></p>
+    </form>
+  </div>
+</div>
+
+<!-- Application -->
+<div id="app" class="hidden">
+  <header class="app">
+    <div class="row">
+      <div class="brand">🥦 <span class="t">Plan déficit</span></div>
+      <nav class="tabs" aria-label="Navigation">
+        <a href="#journal" data-tab="journal"><span class="ic">🍽️</span>Journal</a>
+        <a href="#poids" data-tab="poids"><span class="ic">⚖️</span>Poids</a>
+        <a href="#plan" data-tab="plan"><span class="ic">📋</span>Mon plan</a>
+        <a href="#aliments" data-tab="aliments"><span class="ic">🔎</span>Aliments</a>
+      </nav>
+      <div class="user"><span class="email muted" id="uEmail"></span><button class="btn small ghost" id="logout" title="Se déconnecter">Déconnexion</button></div>
+    </div>
+  </header>
+
+  <!-- JOURNAL -->
+  <main class="view wrap" id="v-journal">
+    <div class="daybar">
+      <button class="iconbtn" id="dPrev" aria-label="Jour précédent">◀</button>
+      <label class="dl" id="dLabel" title="Choisir une date"></label>
+      <button class="iconbtn" id="dNext" aria-label="Jour suivant">▶</button>
+    </div>
+    <div class="seg" id="dType">
+      <button data-t="repos">🛋️ Sans sport<small id="tRest"></small></button>
+      <button data-t="sport">🏋️ Crosstraining<small id="tSport"></small></button>
+    </div>
+    <div class="card sum" id="sum"></div>
+    <div id="tpl"></div>
+    <div id="meals"></div>
+  </main>
+
+  <!-- POIDS -->
+  <main class="view wrap hidden" id="v-poids">
+    <div class="view-title"><h1>⚖️ Suivi du poids</h1></div>
+    <div class="card">
+      <form class="wform" id="wForm">
+        <label class="field">Date<input type="date" id="wDate" required></label>
+        <label class="field">Poids (kg)<input type="text" id="wKg" inputmode="decimal" pattern="[0-9]{2,3}([.,][0-9]{1,2})?" placeholder="81,8" required></label>
+        <button class="btn primary" type="submit">Enregistrer</button>
+      </form>
+      <p class="muted" style="margin:10px 0 0;font-size:.9rem">⏰ Pèse-toi le matin, à jeun, dans les mêmes conditions. On compare les <b>moyennes sur 7 jours</b>, pas les pesées une par une.</p>
+    </div>
+    <div id="wVerdict"></div>
+    <div class="stats" id="wStats"></div>
+    <div class="card chart" id="wChart"></div>
+    <section class="block">
+      <h2>Dernières pesées</h2>
+      <div class="card"><ul class="wlist" id="wList"></ul></div>
+    </section>
+  </main>
+
+  <!-- PLAN -->
+  <main class="view wrap hidden" id="v-plan">
+    <div class="view-title"><h1>📋 Mon plan</h1></div>
+    <p class="muted">Homme de 44 ans, 81,8 kg au départ, trois cours collectifs de crosstraining d'une heure par semaine. Objectif : un déficit d'environ <b>390 kcal par jour</b>.</p>
+    <div class="tblwrap"><table class="ptable" id="pTable"></table></div>
+
+    <section class="block">
+      <h2>🗓️ Journées types</h2>
+      <p class="muted">Les pommes de terre et les légumes sont pesés cuits. Le riz, les flocons, le poulet et le saumon sont pesés avant cuisson. Les fruits sont pesés sans la peau ni le trognon.</p>
+      <div class="days2" id="pDays"></div>
+    </section>
+
+    <section class="block">
+      <h2>💡 Repères</h2>
+      <div class="tips">
+        <div class="tip"><span class="ic">📉</span><b>Suivre la tendance</b><p>Une baisse d'environ 300 à 450 g par semaine est un bon repère. On juge sur 2 à 3 semaines.</p></div>
+        <div class="tip"><span class="ic">🏋️</span><b>Autour du cours</b><p>Cours en fin de journée : collation 1 à 2 h avant, dîner après. Cours le matin : la banane de la collation peut être prise avant la séance.</p></div>
+        <div class="tip"><span class="ic">🔧</span><b>Ajuster</b><p>Baisse de plus de 500 g par semaine dans la durée : ajoute 100 à 150 kcal par jour. Poids stable après 3 semaines : vérifie les portions et l'activité, puis baisse les cibles d'environ 100 kcal.</p></div>
+      </div>
+    </section>
+
+    <section class="block">
+      <h2>🎯 Ajuster mes cibles</h2>
+      <div class="card">
+        <p class="muted" style="margin:0">Le calcul de départ suppose 1,75 m et un quotidien plutôt sédentaire hors cours (Mifflin–St Jeor, facteur d'activité 1,35, environ 400 kcal par cours). Change les cibles ici si besoin.</p>
+        <form id="sForm">
+          <div class="settings-form">
+            <label class="field">kcal sans sport<input type="number" id="s_kcal_rest" min="1000" max="5000" required></label>
+            <label class="field">kcal crosstraining<input type="number" id="s_kcal_sport" min="1000" max="5000" required></label>
+            <label class="field">Protéines (g)<input type="number" id="s_protein" min="0" max="400" required></label>
+            <label class="field">Glucides sans sport (g)<input type="number" id="s_carbs_rest" min="0" max="800" required></label>
+            <label class="field">Glucides sport (g)<input type="number" id="s_carbs_sport" min="0" max="800" required></label>
+            <label class="field">Lipides (g)<input type="number" id="s_fat" min="0" max="300" required></label>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+            <button class="btn primary" type="submit">Enregistrer</button>
+            <button class="btn" type="button" id="sReset">Revenir au plan d'origine</button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <!-- ALIMENTS -->
+  <main class="view wrap hidden" id="v-aliments">
+    <div class="view-title"><h1>Protéines, glucides et lipides <span class="hl">pour 100 g</span></h1></div>
+    <p class="muted">Moyennes arrondies de la table Ciqual 2025 de l'Anses, sauf le skyr (étiquette du produit). Les kcal sont calculées : 4 kcal par g de protéines ou de glucides, 9 kcal par g de lipides. Utilise la ligne qui correspond à ta pesée : crue, cuite ou égouttée.</p>
+    <div class="legend">
+      <span><i style="background:var(--p)"></i>Protéines</span>
+      <span><i style="background:var(--g)"></i>Glucides</span>
+      <span><i style="background:var(--l)"></i>Lipides</span>
+      <span><i style="background:var(--k)"></i>kcal</span>
+    </div>
+    <nav class="toc" aria-label="Catégories">
+      <div class="row">
+        <ul id="toc"></ul>
+        <label class="search"><span aria-hidden="true">🔍</span><input id="q" type="search" placeholder="Chercher un aliment" aria-label="Chercher un aliment"></label>
+      </div>
+    </nav>
+    <div id="foods"></div>
+    <footer>
+      <p><b>Sources :</b> table de composition nutritionnelle <a href="https://ciqual.anses.fr/" target="_blank" rel="noopener">Ciqual 2025 (Anses)</a>, moyennes arrondies. Skyr : étiquette du produit. Pour un produit emballé, utilise les valeurs de son étiquette (bouton « Créer un aliment perso » dans le journal).</p>
+    </footer>
+  </main>
+</div>
+
+<!-- Modal : ajouter un aliment au journal -->
+<div class="modal" id="addModal" role="dialog" aria-modal="true" aria-labelledby="addTitle">
+  <div class="sheet">
+    <button class="close" data-close aria-label="Fermer">✕</button>
+    <h3 id="addTitle">Ajouter un aliment</h3>
+    <div id="addSearch">
+      <label class="field">Repas<select id="addMeal"></select></label>
+      <div class="search" style="margin-top:12px;flex:auto"><span aria-hidden="true">🔍</span><input id="addQ" type="search" placeholder="Poulet, riz, skyr…" autocomplete="off" aria-label="Chercher un aliment"></div>
+      <ul class="results" id="addRes"></ul>
+      <div id="addPick" class="hidden">
+        <p style="margin:14px 0 0;font-weight:800" id="addName"></p>
+        <div class="grams"><input type="number" id="addG" min="0" max="5000" inputmode="decimal" aria-label="Poids en grammes"><b>g</b></div>
+        <div class="res" id="addPrev"></div>
+        <button class="btn primary" id="addOk" style="width:100%;margin-top:16px">Ajouter</button>
+      </div>
+      <button class="linkbtn" id="toCustom">➕ Créer un aliment perso (valeurs de l'étiquette)</button>
+    </div>
+    <form id="customForm" class="hidden">
+      <p class="muted" style="margin:0 0 10px">Recopie les valeurs <b>pour 100 g</b> indiquées sur l'emballage.</p>
+      <label class="field">Nom<input id="cName" maxlength="120" required placeholder="Ex. Purée de cacahuètes Bio"></label>
+      <div class="grid4" style="margin-top:10px">
+        <label class="field">kcal<input type="number" id="cK" min="0" max="900" step="any" placeholder="auto"></label>
+        <label class="field">Prot.<input type="number" id="cP" min="0" max="100" step="any" required></label>
+        <label class="field">Gluc.<input type="number" id="cG" min="0" max="100" step="any" required></label>
+        <label class="field">Lip.<input type="number" id="cL" min="0" max="100" step="any" required></label>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+        <button class="btn primary" type="submit">Enregistrer</button>
+        <button class="btn" type="button" id="cBack">Retour</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal : calculatrice depuis le tableau des aliments -->
+<div class="modal" id="calcModal" role="dialog" aria-modal="true" aria-labelledby="mName">
+  <div class="sheet">
+    <button class="close" data-close aria-label="Fermer">✕</button>
+    <div style="font-size:2.2rem" id="mEm"></div>
+    <h3 id="mName"></h3>
+    <div class="grams"><input type="number" id="mG" min="0" max="2000" value="100" inputmode="decimal" aria-label="Poids de la portion en grammes"><b>g de portion</b></div>
+    <input type="range" id="mR" min="0" max="500" step="5" value="100" aria-label="Poids de la portion en grammes">
+    <div class="res" id="mRes"></div>
+    <div class="how" id="mHow"></div>
+    <div class="addrow">
+      <label class="field">Ajouter au journal du jour<select id="mMeal"></select></label>
+      <button class="btn primary" id="mAdd">Ajouter</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
