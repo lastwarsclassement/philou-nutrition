@@ -143,7 +143,8 @@ function computePlan(p) {
   const bmr = 10 * p.weight_start + 6.25 * p.height_cm - 5 * p.age + (p.sex === 'F' ? -161 : 5);   // Mifflin–St Jeor
   const mr = Math.round(bmr * p.activity / 10) * 10, ms = p.sessions > 0 ? mr + KCAL_SESSION : mr;
   const floor = p.sex === 'F' ? 1200 : 1500, r50 = x => Math.round(x / 50) * 50;
-  const kr = Math.max(floor, r50(mr - DEFICIT)), ks = Math.max(floor, r50(ms - DEFICIT));
+  const noDeficit = p.sex === 'F' && p.pregnant;   // grossesse / allaitement : maintien, sans déficit
+  const kr = noDeficit ? r50(mr) : Math.max(floor, r50(mr - DEFICIT)), ks = noDeficit ? r50(ms) : Math.max(floor, r50(ms - DEFICIT));
   const P = Math.min(220, Math.round(1.8 * p.weight_start / 10) * 10);       // ≈ 1,8 g/kg
   const F = Math.round(0.32 * kr / 9);                                         // ≈ 32 % des kcal
   const G = k => Math.max(0, Math.round((k - 4 * P - 9 * F) / 4));
@@ -151,6 +152,8 @@ function computePlan(p) {
 }
 const planValues = p => p.plan === 'philou' ? {...PHILOU_PLAN} : computePlan(p);
 const isPhilou = () => state.settings.plan === 'philou';
+const isPregnant = () => state.settings.sex === 'F' && !!state.settings.pregnant;
+const PREG_MSG = 'Pendant la grossesse ou l’allaitement, on ne cherche pas à perdre du poids : les cibles sont au niveau du maintien, sans déficit. Parles-en à ton médecin ou à ta sage-femme, qui pourra adapter ces repères.';
 const sportName = () => isPhilou() ? 'Crosstraining' : 'Sport';
 
 let pfMode = 'create';
@@ -158,14 +161,16 @@ function readProfile() {
   return {first_name: $('pfName').value.trim().slice(0, 40), plan: $('pfPlanPhilou').checked ? 'philou' : 'custom',
     sex: $('pfSex').value, age: +$('pfAge').value, height_cm: +$('pfHeight').value,
     weight_start: Math.round(parseFloat(String($('pfWeight').value).replace(',', '.')) * 10) / 10,
-    activity: +$('pfActivity').value, sessions: +$('pfSessions').value};
+    activity: +$('pfActivity').value, sessions: +$('pfSessions').value, pregnant: $('pfSex').value === 'F' && $('pfPreg').checked};
 }
 function fillProfile(p) {
   $('pfName').value = p.first_name || ''; $('pfPlanPhilou').checked = p.plan === 'philou'; $('pfPlanCustom').checked = p.plan !== 'philou';
   $('pfSex').value = p.sex || 'H'; $('pfAge').value = p.age || ''; $('pfHeight').value = p.height_cm || '';
   $('pfWeight').value = p.weight_start ? String(p.weight_start).replace('.', ',') : ''; $('pfActivity').value = String(p.activity || 1.35); $('pfSessions').value = p.sessions ?? 3;
+  $('pfPreg').checked = !!p.pregnant; $('pfPregWrap').classList.toggle('hidden', $('pfSex').value !== 'F');
 }
 function updProfilePreview() {
+  $('pfPregWrap').classList.toggle('hidden', $('pfSex').value !== 'F');
   const p = readProfile();
   const ok = p.age >= 15 && p.age <= 100 && p.height_cm >= 120 && p.height_cm <= 230 && p.weight_start >= 30 && p.weight_start <= 300;
   if (!ok && p.plan !== 'philou') { $('pfPreview').innerHTML = '<p class="muted" style="margin:0">Remplis ton âge, ta taille et ton poids pour voir tes consignes.</p>'; return; }
@@ -177,7 +182,8 @@ function updProfilePreview() {
     <tr><td>Protéines</td><td>${v.protein} g</td><td>${v.protein} g</td></tr>
     <tr><td>Glucides</td><td>${v.carbs_rest} g</td><td>${v.carbs_sport} g</td></tr>
     <tr><td>Lipides</td><td>${v.fat} g</td><td>${v.fat} g</td></tr></tbody></table>
-    <p class="muted" style="margin:8px 0 0;font-size:.85rem">${p.plan === 'philou' ? 'Plan établi pour Philou (PDF), avec ses journées types.' : `Mifflin–St Jeor (${fr0(v.bmr)} kcal au repos) × activité, + ${KCAL_SESSION} kcal les jours de séance, − ${DEFICIT} kcal de déficit, protéines ≈ 1,8 g/kg. Tu pourras les ajuster ensuite dans « Mon plan ».`}</p>`;
+    ${p.pregnant && p.plan !== 'philou' ? `<div class="preg-warn">🤰 ${PREG_MSG}</div>` : ''}
+    <p class="muted" style="margin:8px 0 0;font-size:.85rem">${p.plan === 'philou' ? 'Plan établi pour Philou (PDF), avec ses journées types.' : `Mifflin–St Jeor (${fr0(v.bmr)} kcal au repos) × activité, + ${KCAL_SESSION} kcal les jours de séance${p.pregnant ? ', sans déficit' : `, − ${DEFICIT} kcal de déficit`}, protéines ≈ 1,8 g/kg. Tu pourras les ajuster ensuite dans « Mon plan ».`}</p>`;
 }
 function openProfile(mode) {
   pfMode = mode;
@@ -491,6 +497,7 @@ function renderWeights() {
     else if (loss > 0) v = ['info', '🐢', `Baisse lente : −${fr(loss)} kg en une semaine`, 'Ça descend, mais doucement. On juge sur 2 à 3 semaines avant d’ajuster.'];
     else v = ['info', '↔️', `Moyenne ${loss === 0 ? 'stable' : `en hausse de ${fr(-loss)} kg`} cette semaine`, 'Une semaine ne suffit pas : l’eau et le sel font varier le poids. On regarde la tendance sur 2 à 3 semaines.'];
   }
+  if (isPregnant()) v = ['info', '🤰', 'Suivi du poids pendant la grossesse ou l’allaitement', 'La prise de poids pendant la grossesse est normale et attendue. Le site n’affiche pas de conseil de perte de poids : suis les repères donnés par ton médecin ou ta sage-femme.'];
   $('wVerdict').innerHTML = `<div class="card verdict ${v[0]}"><span class="ic">${v[1]}</span><div><h3>${v[2]}</h3><p>${v[3]}</p></div></div>`;
 
   // Stats
@@ -616,7 +623,8 @@ async function renderBilan() {
     else msgs.push(['good', '🎯', 'Apports proches de la cible', `${onTarget} jour${onTarget > 1 ? 's' : ''} sur ${n} à ±10 % de la cible. Bravo !`]);
     if (avg('P') < s.protein * 0.85) msgs.push(['warn', '🍗', `Protéines un peu justes : ${fr0(avg('P'))} g par jour en moyenne`, `L’objectif est ${s.protein} g : ajoute du skyr, du poulet, du thon ou des œufs.`]);
   }
-  if (wDiff != null) {
+  if (isPregnant()) msgs.push(['info', '🤰', 'Grossesse ou allaitement : pas d’objectif de perte de poids', PREG_MSG]);
+  else if (wDiff != null) {
     const loss = -wDiff;
     msgs.push(loss > 0.5 ? ['warn', '⚡', `Poids moyen −${fr(loss)} kg par rapport à la semaine d’avant`, 'C’est rapide : si ça dure, ajoute 100 à 150 kcal par jour.']
       : loss >= 0.3 ? ['good', '📉', `Poids moyen −${fr(loss)} kg par rapport à la semaine d’avant`, 'Pile dans le rythme visé (300 à 450 g par semaine).']
@@ -689,7 +697,8 @@ const SKEYS = ['kcal_rest', 'kcal_sport', 'protein', 'carbs_rest', 'carbs_sport'
 function renderPlan() {
   const s = state.settings, M = maint(), n = s.sessions ?? 3, sp = sportName();
   const act = {1.2: 'un quotidien sédentaire', 1.35: 'un quotidien plutôt sédentaire', 1.5: 'un quotidien actif', 1.7: 'un quotidien très actif'}[s.activity] || 'son activité';
-  $('pIntro').innerHTML = `${esc(s.first_name || '')}${s.first_name ? ' · ' : ''}${s.sex === 'F' ? 'Femme' : 'Homme'} de ${s.age} ans, ${fr(s.weight_start)} kg au départ, ${s.height_cm} cm, ${act}, ${n} ${isPhilou() ? 'cours de crosstraining' : 'séance' + (n > 1 ? 's' : '') + ' de sport'} d'environ 1 h par semaine. Objectif : un déficit d'environ <b>${fr0(M.repos - s.kcal_rest)} kcal par jour</b>.`;
+  $('pIntro').innerHTML = `${esc(s.first_name || '')}${s.first_name ? ' · ' : ''}${s.sex === 'F' ? 'Femme' : 'Homme'} de ${s.age} ans, ${fr(s.weight_start)} kg au départ, ${s.height_cm} cm, ${act}, ${n} ${isPhilou() ? 'cours de crosstraining' : 'séance' + (n > 1 ? 's' : '') + ' de sport'} d'environ 1 h par semaine. ${isPregnant() ? 'Enceinte ou allaitante : objectif de <b>maintien, sans déficit</b>.' : `Objectif : un déficit d'environ <b>${fr0(M.repos - s.kcal_rest)} kcal par jour</b>.`}`;
+  $('pPreg').innerHTML = isPregnant() ? `<div class="card verdict warn"><span class="ic">🤰</span><div><h3>Grossesse ou allaitement</h3><p>${PREG_MSG}</p></div></div>` : '';
   $('pTable').innerHTML = `<thead><tr><th>Repère quotidien</th><th>Sans sport · ${7 - n} j</th><th>${sp} · ${n} j</th></tr></thead><tbody>
     <tr><td>Dépense de maintien estimée</td><td>${fr0(M.repos)} kcal</td><td>${fr0(M.sport)} kcal</td></tr>
     <tr><td><b>Apport cible</b></td><td><b>${fr0(s.kcal_rest)} kcal</b></td><td><b>${fr0(s.kcal_sport)} kcal</b></td></tr>

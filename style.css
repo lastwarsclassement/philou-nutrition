@@ -299,3 +299,8 @@ footer{border-top:var(--border);padding:28px 0 40px;font-size:.88rem;color:var(-
 .pw input{padding-right:110px}
 .pw-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:2px solid var(--ink);background:var(--bg);border-radius:99px;padding:3px 10px;font-weight:800;font-size:.82rem;white-space:nowrap}
 .pw-toggle:hover{background:var(--soft)}
+
+/* GROSSESSE / ALLAITEMENT */
+.check{display:flex;align-items:center;gap:10px;margin-top:12px;background:#fff;border:2px solid var(--ink);border-radius:14px;padding:10px 12px;font-weight:800;cursor:pointer}
+.check input{width:20px;height:20px;accent-color:var(--ink)}
+.preg-warn{margin-top:10px;background:var(--g-soft);border:2px solid var(--ink);border-radius:12px;padding:10px 12px;font-weight:700;font-size:.9rem}

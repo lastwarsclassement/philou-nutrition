@@ -24,7 +24,8 @@ alter table public.settings
   add column if not exists sessions     int check (sessions between 0 and 14),
   add column if not exists maint_rest   int,
   add column if not exists maint_sport  int,
-  add column if not exists created_at   timestamptz not null default now();
+  add column if not exists created_at   timestamptz not null default now(),
+  add column if not exists pregnant     boolean not null default false;   -- enceinte ou allaitante : pas de déficit
 
 create table if not exists public.days (
   user_id  uuid not null default auth.uid(),

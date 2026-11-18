@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=7">
+<link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
 
@@ -61,6 +61,7 @@
         <label class="field">Taille (cm)<input type="number" id="pfHeight" min="120" max="230" required inputmode="numeric"></label>
         <label class="field">Poids actuel (kg)<input type="text" id="pfWeight" inputmode="decimal" pattern="[0-9]{2,3}([.,][0-9])?" placeholder="80,5" required></label>
       </div>
+      <label class="check hidden" id="pfPregWrap"><input type="checkbox" id="pfPreg"> <span>🤰 Je suis enceinte ou j'allaite</span></label>
       <label class="field" style="margin-top:10px">Activité au quotidien (hors sport)<select id="pfActivity">
         <option value="1.2">Sédentaire : bureau, très peu de marche</option>
         <option value="1.35">Plutôt sédentaire : un peu de marche dans la journée</option>
@@ -151,6 +152,7 @@
   <main class="view wrap" id="v-plan">
     <div class="view-title"><h1>📋 Mon plan</h1><button class="btn small" id="pEdit">✏️ Modifier mon profil</button></div>
     <p class="muted" id="pIntro"></p>
+    <div id="pPreg" style="margin-bottom:18px"></div>
     <div class="tblwrap"><table class="ptable" id="pTable"></table></div>
 
     <section class="block">
@@ -268,9 +270,9 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
-<script src="config.js?v=7"></script>
-<script src="data.js?v=7"></script>
+<script src="config.js?v=8"></script>
+<script src="data.js?v=8"></script>
 <script src="ciqual.js?v=2"></script>
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>
