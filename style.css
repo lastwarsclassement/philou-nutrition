@@ -329,3 +329,11 @@ footer{border-top:var(--border);padding:28px 0 40px;font-size:.88rem;color:var(-
 #recipeModal .addrow{flex-wrap:wrap}
 @media (max-width:760px){.tabs a{padding:4px 2px;font-size:.66rem}}
 @media (max-width:760px){header.app{backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--bg)}}
+
+/* ADMIN */
+.atable tbody tr{cursor:pointer}
+.atable tbody tr:hover,.atable tbody tr.sel{background:var(--soft)}
+.atable td{vertical-align:top}
+.ptable td.good,.ptable b.good{color:#13856f;font-weight:800} .ptable td.bad,.ptable b.bad{color:#d64533;font-weight:800}
+#v-admin .tbl{overflow-x:auto;background:#fff;border:var(--border);border-radius:16px}
+#v-admin .atable{min-width:640px}

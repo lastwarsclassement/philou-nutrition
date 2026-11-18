@@ -259,6 +259,9 @@ async function enterApp() {
     state.custom = cu.data;
     state.weights = wt.data.map(w => ({date: w.date, kg: +w.kg}));
     rebuildFoods(); renderFoodsCustomNote();
+    const ad = await sb.from('admins').select('user_id').maybeSingle();
+    state.admin = !ad.error && !!ad.data;
+    $('adminBtn').classList.toggle('hidden', !state.admin);
     $('uName').textContent = state.settings.first_name || state.user.email;
     started = true;
     screen('app');
@@ -273,14 +276,16 @@ function showError(e) {
 }
 
 /* ========== Navigation par onglets ========== */
-const TABS = ['plan', 'journal', 'bilan', 'poids', 'recettes', 'aliments'];
+const TABS = ['plan', 'journal', 'bilan', 'poids', 'recettes', 'aliments', 'admin'];
 function route() {
-  const t = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'plan';
+  let t = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'plan';
+  if (t === 'admin' && !state.admin) t = 'plan';
   TABS.forEach(x => $('v-' + x).classList.toggle('hidden', x !== t));
   document.querySelectorAll('.tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === t));
   if (t === 'poids') renderWeights();
   if (t === 'bilan') renderBilan();
   if (t === 'recettes') renderRecipes();
+  if (t === 'admin') renderAdmin();
   window.scrollTo(0, 0);
 }
 window.addEventListener('hashchange', () => { if (started) route(); });
@@ -532,13 +537,13 @@ function renderWeights() {
     : '<li class="muted">Aucune pesée pour l’instant.</li>';
 }
 
-function renderChart() {
-  const W = state.weights.slice(-120);
-  if (W.length < 2) { $('wChart').innerHTML = '<p class="muted" style="margin:0;text-align:center">📈 La courbe apparaîtra à partir de 2 pesées.</p>'; return; }
+function renderChart(weights = state.weights, el = $('wChart')) {
+  const W = weights.slice(-120);
+  if (W.length < 2) { el.innerHTML = '<p class="muted" style="margin:0;text-align:center">📈 La courbe apparaîtra à partir de 2 pesées.</p>'; return; }
   const w = 640, h = 240, m = {l: 44, r: 14, t: 14, b: 28};
   const t0 = parseIso(W[0].date).getTime(), t1 = parseIso(W[W.length - 1].date).getTime();
   const span = Math.max(1, t1 - t0);
-  const avgs = W.map(p => ({date: p.date, kg: mean(state.weights.filter(x => x.date <= p.date && x.date >= addDays(p.date, -6)).map(x => x.kg))}));
+  const avgs = W.map(p => ({date: p.date, kg: mean(weights.filter(x => x.date <= p.date && x.date >= addDays(p.date, -6)).map(x => x.kg))}));
   const all = W.map(p => p.kg);
   let lo = Math.floor(Math.min(...all) - 0.5), hi = Math.ceil(Math.max(...all) + 0.5);
   if (hi - lo < 2) hi = lo + 2;
@@ -549,7 +554,7 @@ function renderChart() {
   for (let k = lo; k <= hi; k += step) grid += `<line x1="${m.l}" x2="${w - m.r}" y1="${Y(k)}" y2="${Y(k)}" stroke="var(--line)" stroke-width="1.5"/><text x="${m.l - 8}" y="${Y(k) + 4}" text-anchor="end" font-size="12" fill="var(--muted)" font-weight="700">${k}</text>`;
   const path = avgs.map((p, i) => `${i ? 'L' : 'M'}${X(p.date).toFixed(1)},${Y(p.kg).toFixed(1)}`).join('');
   const dots = W.map(p => `<circle cx="${X(p.date).toFixed(1)}" cy="${Y(p.kg).toFixed(1)}" r="4" fill="var(--g)" stroke="var(--ink)" stroke-width="1.5"><title>${shortDate(p.date)} : ${fr(p.kg)} kg</title></circle>`).join('');
-  $('wChart').innerHTML = `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Courbe du poids">
+  el.innerHTML = `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Courbe du poids">
     ${grid}
     <path d="${path}" fill="none" stroke="var(--k)" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>
     ${dots}
@@ -901,6 +906,70 @@ $('rAdd').addEventListener('click', async () => {
     renderJournal(); closeModals(); toast(`${curR.label} ajouté au journal ✔`);
   } catch (e) { fail(e); } finally { $('rAdd').disabled = false; }
 });
+
+/* ========== ADMIN (lecture seule) ========== */
+let ADM = [], admSel = null;
+const dt = s => s ? new Date(s).toLocaleDateString('fr-FR', {day: 'numeric', month: 'short'}) : '—';
+const ago = s => { if (!s) return 'jamais'; const n = Math.floor((Date.now() - new Date(s)) / 864e5); return n <= 0 ? 'aujourd’hui' : n === 1 ? 'hier' : `il y a ${n} j`; };
+function admStats(u) {
+  const W = (u.weights || []).map(w => ({date: w.date, kg: +w.kg}));
+  const t = today(), from7 = addDays(t, -6);
+  const D = u.days || [], d7 = D.filter(x => x.date >= from7 && x.date <= t);
+  const types = Object.fromEntries((u.types || []).map(x => [x.date, x.t]));
+  const tgt = x => types[x.date] === 'sport' ? u.kcal_sport : u.kcal_rest;
+  const last = W.length ? W[W.length - 1] : null;
+  const a7 = end => { const l = W.filter(x => x.date <= end && x.date >= addDays(end, -6)); return l.length ? mean(l.map(x => x.kg)) : null; };
+  const avgNow = last ? a7(last.date) : null, avgPrev = last ? a7(addDays(last.date, -7)) : null;
+  return {W, D, d7, last, tgt, types,
+    start: u.weight_start != null ? +u.weight_start : (W[0] ? W[0].kg : null),
+    trend: avgNow != null && avgPrev != null ? avgNow - avgPrev : null,
+    kAvg: d7.length ? mean(d7.map(x => +x.k)) : null, tAvg: d7.length ? mean(d7.map(tgt)) : null,
+    pAvg: d7.length ? mean(d7.map(x => +x.p)) : null};
+}
+async function renderAdmin(reload = false) {
+  if (!state.admin) return;
+  if (!ADM.length || reload) {
+    $('admList').innerHTML = '<p class="muted" style="text-align:center"><span class="spinner"></span></p>';
+    const {data, error} = await sb.rpc('admin_overview');
+    if (error) { $('admList').innerHTML = `<p class="msg err">${esc(error.message)}</p>`; return; }
+    ADM = data || [];
+  }
+  const sgn = x => (x > 0 ? '+' : x < 0 ? '−' : '') + fr(Math.abs(x));
+  $('admList').innerHTML = `<div class="tbl"><table class="ptable atable"><thead><tr><th>Compte</th><th>Poids</th><th>Depuis le début</th><th>Tendance 7 j</th><th>kcal moy. 7 j</th><th>Jours saisis</th><th>Vu</th></tr></thead><tbody>` +
+    ADM.map(u => {
+      const s = admStats(u), name = u.first_name || '(profil non créé)';
+      const diff = s.last && s.start != null ? s.last.kg - s.start : null;
+      const kc = s.kAvg != null ? `<b>${fr0(s.kAvg)}</b> <small class="muted">/ ${fr0(s.tAvg)}</small>` : '—';
+      return `<tr data-u="${u.id}" class="${admSel === u.id ? 'sel' : ''}"><td><b>${esc(name)}</b>${u.pregnant ? ' 🤰' : ''}<br><small class="muted">${esc(u.email)}</small></td>
+        <td>${s.last ? `<b>${fr(s.last.kg)}</b> kg<br><small class="muted">${dt(s.last.date)}</small>` : '—'}</td>
+        <td class="${diff == null ? '' : diff <= 0 ? 'good' : 'bad'}">${diff == null ? '—' : sgn(diff) + ' kg'}</td>
+        <td>${s.trend == null ? '—' : sgn(s.trend) + ' kg'}</td>
+        <td>${kc}</td><td>${s.d7.length} / 7</td><td><small>${ago(u.last_sign_in_at)}</small></td></tr>`;
+    }).join('') + `</tbody></table></div>` + (ADM.length ? '' : '<p class="muted">Aucun compte pour l’instant.</p>');
+  renderAdminDetail();
+}
+function renderAdminDetail() {
+  const u = ADM.find(x => x.id === admSel);
+  if (!u) { $('admDetail').innerHTML = '<p class="muted" style="text-align:center">👆 Touche un compte pour voir sa courbe et ses 14 derniers jours.</p>'; return; }
+  const s = admStats(u), t = today();
+  const rows = [];
+  for (let i = 0; i < 14; i++) {
+    const day = addDays(t, -i), e = s.D.find(x => x.date === day), w = s.W.find(x => x.date === day);
+    const tg = s.types[day] === 'sport' ? u.kcal_sport : u.kcal_rest;
+    rows.push(`<tr><td>${cap(parseIso(day).toLocaleDateString('fr-FR', {weekday: 'short', day: 'numeric', month: 'short'}))}${s.types[day] === 'sport' ? ' 🏋️' : ''}</td>
+      <td>${e ? `<b class="${+e.k > tg * 1.05 ? 'bad' : ''}">${fr0(e.k)}</b>` : '<span class="muted">—</span>'} <small class="muted">/ ${fr0(tg)}</small></td>
+      <td>${e ? fr0(e.p) + ' g' : '—'} <small class="muted">/ ${u.protein} g</small></td><td>${w ? fr(w.kg) + ' kg' : ''}</td></tr>`);
+  }
+  $('admDetail').innerHTML = `<div class="card">
+    <h3 style="margin:0">${esc(u.first_name || u.email)}</h3>
+    <p class="muted" style="margin:4px 0 12px">${esc(u.email)} · inscrit le ${dt(u.created_at)} · ${u.plan === 'philou' ? 'Plan de Philou' : 'plan calculé'}${u.sex ? ` · ${u.sex === 'F' ? 'femme' : 'homme'}, ${u.age} ans` : ''} · cibles ${fr0(u.kcal_rest || 0)} / ${fr0(u.kcal_sport || 0)} kcal, ${u.protein || '—'} g de protéines</p>
+    <div class="chart" id="admChart"></div>
+    <div class="tbl" style="margin-top:14px"><table class="ptable"><thead><tr><th>Jour</th><th>kcal</th><th>Protéines</th><th>Pesée</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>
+  </div>`;
+  renderChart(s.W, $('admChart'));
+}
+$('admList').addEventListener('click', e => { const tr = e.target.closest('tr[data-u]'); if (!tr) return; admSel = tr.dataset.u; renderAdmin(); $('admDetail').scrollIntoView({behavior: 'smooth', block: 'start'}); });
+$('admReload').addEventListener('click', () => renderAdmin(true));
 
 /* ========== Go ========== */
 boot();

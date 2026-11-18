@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=11">
+<link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
 
@@ -30,7 +30,7 @@
   <div class="card">
     <div style="font-size:2.6rem;line-height:1">🥦🍗🍚</div>
     <h1>Plan déficit</h1>
-    <p class="muted" style="margin:0">Chacun a son propre espace : ton journal, tes pesées et ton plan ne sont visibles que par toi.</p>
+    <p class="muted" style="margin:0">Chacun a son propre espace : ton journal, tes pesées et ton plan ne sont pas visibles par les autres utilisateurs. L'administrateur du site peut les consulter pour suivre tes progrès.</p>
     <form class="auth-form" id="authForm">
       <label class="field">E-mail<input type="email" id="aEmail" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="email" required></label>
       <label class="field">Mot de passe
@@ -92,7 +92,7 @@
         <a href="#recettes" data-tab="recettes"><span class="ic">🍲</span>Recettes</a>
         <a href="#aliments" data-tab="aliments"><span class="ic">🔎</span>Aliments</a>
       </nav>
-      <div class="user"><span class="email muted" id="uName"></span><button class="btn small ghost" id="logout" title="Se déconnecter">Déconnexion</button></div>
+      <div class="user"><a class="btn small ghost hidden" id="adminBtn" href="#admin" title="Suivi de tous les comptes">👑 Suivi</a><span class="email muted" id="uName"></span><button class="btn small ghost" id="logout" title="Se déconnecter">Déconnexion</button></div>
     </div>
   </header>
 
@@ -202,6 +202,14 @@
     <p class="muted" style="font-size:.85rem;margin-top:18px">Dans le journal, tape le nom d'une recette (« chili », « croque », « porridge »…) dans la recherche pour l'ajouter en une portion. Les plats tout faits (lasagnes, quiche du commerce…) sont aussi dans la recherche, avec les valeurs Ciqual.</p>
   </main>
 
+  <!-- ADMIN -->
+  <main class="view wrap hidden" id="v-admin">
+    <div class="view-title"><h1>👑 Suivi des comptes</h1><button class="btn small" id="admReload">🔄 Actualiser</button></div>
+    <p class="muted">Lecture seule : tu vois les pesées et les calories de chacun, sans pouvoir les modifier. kcal moyennes des jours saisis sur les 7 derniers jours, comparées à la cible.</p>
+    <div id="admList"></div>
+    <div id="admDetail" style="margin-top:18px;scroll-margin-top:80px"></div>
+  </main>
+
   <!-- ALIMENTS -->
   <main class="view wrap hidden" id="v-aliments">
     <div class="view-title"><h1>Protéines, glucides et lipides <span class="hl">pour 100 g</span></h1></div>
@@ -301,10 +309,10 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
-<script src="config.js?v=10"></script>
-<script src="data.js?v=10"></script>
+<script src="config.js?v=12"></script>
+<script src="data.js?v=12"></script>
 <script src="ciqual.js?v=2"></script>
 <script src="recipes.js?v=1"></script>
-<script src="app.js?v=10"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>
