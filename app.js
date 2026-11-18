@@ -158,7 +158,9 @@ const KCAL_SESSION = 400;   // dépense d'une séance d'environ 1 h
 const DEFICIT = 400;        // déficit visé par jour
 function computePlan(p) {
   const bmr = 10 * p.weight_start + 6.25 * p.height_cm - 5 * p.age + (p.sex === 'F' ? -161 : 5);   // Mifflin–St Jeor
-  const mr = Math.round(bmr * p.activity / 10) * 10, ms = p.sessions > 0 ? mr + KCAL_SESSION : mr;
+  // plus de 7 séances : certains jours en ont 2, la dépense d'un jour de sport est la moyenne de ces jours
+  const perDay = Math.max(1, (p.sessions || 0) / 7);
+  const mr = Math.round(bmr * p.activity / 10) * 10, ms = p.sessions > 0 ? mr + Math.round(KCAL_SESSION * perDay / 10) * 10 : mr;
   const floor = p.sex === 'F' ? 1200 : 1500, r50 = x => Math.round(x / 50) * 50;
   const noDeficit = p.sex === 'F' && p.pregnant;   // grossesse / allaitement : maintien, sans déficit
   const kr = noDeficit ? r50(mr) : Math.max(floor, r50(mr - DEFICIT)), ks = noDeficit ? r50(ms) : Math.max(floor, r50(ms - DEFICIT));
@@ -687,7 +689,7 @@ async function renderBilan() {
       <div class="stat"><b class="cp">${n ? fr0(avg('P')) : '–'}</b><small>g de protéines / jour</small></div>
       <div class="stat"><b>${n}/7</b><small>jour${n > 1 ? 's' : ''} saisi${n > 1 ? 's' : ''}</small></div>
       <div class="stat"><b>${onTarget}</b><small>jour${onTarget > 1 ? 's' : ''} dans la cible (±10 %)</small></div>
-      <div class="stat"><b>${sportDays}/${state.settings.sessions ?? 3}</b><small>séances de sport</small></div>
+      <div class="stat"><b>${sportDays}/${Math.min(7, state.settings.sessions ?? 3)}</b><small>séances de sport</small></div>
       <div class="stat"><b class="${deficit >= 0 ? 'cl' : 'cp'}">${n ? (deficit >= 0 ? '−' : '+') + fr0(Math.abs(deficit)) : '–'}</b><small>kcal vs maintien${n ? ` ≈ ${fr(Math.abs(deficit) / 7700 * 1000, 0)} g de gras` : ''}</small></div>
     </div>
     ${msgs.map(m => `<div class="card verdict ${m[0]}"><span class="ic">${m[1]}</span><div><h3>${m[2]}</h3><p>${m[3]}</p></div></div>`).join('')}
@@ -719,11 +721,11 @@ $('wList').addEventListener('click', async e => {
 /* ========== PLAN ========== */
 const SKEYS = ['kcal_rest', 'kcal_sport', 'protein', 'carbs_rest', 'carbs_sport', 'fat'];
 function renderPlan() {
-  const s = state.settings, M = maint(), n = s.sessions ?? 3, sp = sportName();
+  const s = state.settings, M = maint(), n = s.sessions ?? 3, nd = Math.min(7, n), sp = sportName();
   const act = {1.2: 'un quotidien sédentaire', 1.35: 'un quotidien plutôt sédentaire', 1.5: 'un quotidien actif', 1.7: 'un quotidien très actif'}[s.activity] || 'son activité';
   $('pIntro').innerHTML = `${esc(s.first_name || '')}${s.first_name ? ' · ' : ''}${s.sex === 'F' ? 'Femme' : 'Homme'} de ${s.age} ans, ${fr(s.weight_start)} kg au départ, ${s.height_cm} cm, ${act}, ${n} ${isPhilou() ? 'cours de crosstraining' : 'séance' + (n > 1 ? 's' : '') + ' de sport'} d'environ 1 h par semaine. ${isPregnant() ? 'Enceinte ou allaitante : objectif de <b>maintien, sans déficit</b>.' : `Objectif : un déficit d'environ <b>${fr0(M.repos - s.kcal_rest)} kcal par jour</b>.`}`;
   $('pPreg').innerHTML = isPregnant() ? `<div class="card verdict warn"><span class="ic">🤰</span><div><h3>Grossesse ou allaitement</h3><p>${PREG_MSG}</p></div></div>` : '';
-  $('pTable').innerHTML = `<thead><tr><th>Repère quotidien</th><th>Sans sport · ${7 - n} j</th><th>${sp} · ${n} j</th></tr></thead><tbody>
+  $('pTable').innerHTML = `<thead><tr><th>Repère quotidien</th><th>Sans sport · ${7 - nd} j</th><th>${sp} · ${nd} j</th></tr></thead><tbody>
     <tr><td>Dépense de maintien estimée</td><td>${fr0(M.repos)} kcal</td><td>${fr0(M.sport)} kcal</td></tr>
     <tr><td><b>Apport cible</b></td><td><b>${fr0(s.kcal_rest)} kcal</b></td><td><b>${fr0(s.kcal_sport)} kcal</b></td></tr>
     <tr><td>Déficit visé</td><td>${fr0(M.repos - s.kcal_rest)} kcal</td><td>${fr0(M.sport - s.kcal_sport)} kcal</td></tr>
