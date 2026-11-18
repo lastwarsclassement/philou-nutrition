@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 
@@ -154,7 +154,7 @@
     </nav>
     <div id="foods"></div>
     <footer>
-      <p><b>Sources :</b> table de composition nutritionnelle <a href="https://ciqual.anses.fr/" target="_blank" rel="noopener">Ciqual 2025 (Anses)</a>, moyennes arrondies. Skyr : étiquette du produit. Pour un produit emballé, utilise les valeurs de son étiquette (bouton « Créer un aliment perso » dans le journal).</p>
+      <p><b>Sources :</b> table de composition nutritionnelle <a href="https://ciqual.anses.fr/" target="_blank" rel="noopener">Ciqual 2025 (Anses)</a>, moyennes arrondies. Skyr : étiquette du produit. La « Table Ciqual complète » reprend les 3 479 aliments de la <a href="https://doi.org/10.57745/RDMHWY" target="_blank" rel="noopener">table Ciqual 2025</a> (licence Etalab 2.0), avec les kcal officielles. Pour un produit emballé, utilise les valeurs de son étiquette (bouton « Créer un aliment perso » dans le journal).</p>
     </footer>
   </main>
 </div>
@@ -166,7 +166,7 @@
     <h3 id="addTitle">Ajouter un aliment</h3>
     <div id="addSearch">
       <label class="field">Repas<select id="addMeal"></select></label>
-      <div class="search" style="margin-top:12px;flex:auto"><span aria-hidden="true">🔍</span><input id="addQ" type="search" placeholder="Poulet, riz, skyr…" autocomplete="off" aria-label="Chercher un aliment"></div>
+      <div class="search" style="margin-top:12px;flex:auto"><span aria-hidden="true">🔍</span><input id="addQ" type="search" placeholder="Poulet, riz, pizza, croissant…" autocomplete="off" aria-label="Chercher un aliment"></div>
       <ul class="results" id="addRes"></ul>
       <div id="addPick" class="hidden">
         <p style="margin:14px 0 0;font-weight:800" id="addName"></p>
@@ -213,8 +213,9 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
-<script src="config.js?v=3"></script>
-<script src="data.js?v=3"></script>
-<script src="app.js?v=3"></script>
+<script src="config.js?v=4"></script>
+<script src="data.js?v=4"></script>
+<script src="ciqual.js?v=1"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

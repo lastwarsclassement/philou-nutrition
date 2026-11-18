@@ -273,3 +273,7 @@ footer{border-top:var(--border);padding:28px 0 40px;font-size:.88rem;color:var(-
 @media (max-width:480px){.hide-s{display:none}.btable{font-size:.88rem}}
 .iconbtn:disabled{opacity:.35;cursor:default}
 @media (max-width:760px){.tabs a{padding:4px 4px;font-size:.7rem}}
+
+/* TABLE CIQUAL COMPLÈTE */
+.ciq-tools{margin:0 0 12px}
+.ciq-tools select{border:var(--border);border-radius:14px;padding:8px 12px;background:#fff;font-weight:700;width:100%;max-width:420px}

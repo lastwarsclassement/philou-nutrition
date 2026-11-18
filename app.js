@@ -6,7 +6,7 @@ const num = v => typeof v === 'number' ? v : v === 'tr' ? 0 : parseFloat(v.slice
 const fr = (x, d = 1) => (+x).toLocaleString('fr-FR', {minimumFractionDigits: d, maximumFractionDigits: d});
 const fr0 = x => Math.round(x).toLocaleString('fr-FR');
 const show = v => typeof v === 'number' ? (Number.isInteger(v) && v >= 100 ? String(v) : (v === 0 ? '0' : fr(v))) : v === 'tr' ? 'Traces' : '< ' + v.slice(1);
-const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const norm = s => s.toLowerCase().replace(/œ/g, 'oe').replace(/æ/g, 'ae').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[’']/g, ' ');
 const kcalOf = (p, g, l) => 4 * p + 4 * g + 9 * l;
 const stClass = s => /égoutt/.test(s) ? 'eg' : /^(cr|sèch|sec)/.test(s) ? 'cru' : 'cuit';
 const pad = n => String(n).padStart(2, '0');
@@ -36,13 +36,31 @@ CATS.forEach(c => c.items.forEach(([n, s, p, g, l]) => {
   const P = num(p), G = num(g), L = num(l);
   BASE.push({key: 'c' + BASE.length, n, s, p, g, l, P, G, L, K: kcalOf(P, G, L), em: c.em, cat: c.id, label: n + (s ? ' (' + s + ')' : '')});
 }));
-const findBase = (n, s) => BASE.find(f => f.n === n && f.s === s);
+const N_CURATED = BASE.length;
+// Table Ciqual 2025 complète (ciqual.js) : kcal officielles du règlement UE 1169/2011
+const GRP_EM = ['🍽️', '🥘', '🥕', '🍞', '🍖', '🧀', '🥤', '🍬', '🍨', '🧈', '🧂', '🍼'];
+if (typeof CIQUAL !== 'undefined') CIQUAL.forEach(([n, gi, K, P, G, L]) => {
+  BASE.push({key: 'q' + BASE.length, n, s: '', p: P, g: G, l: L, P, G, L, K, em: GRP_EM[gi] || '🍽️', cat: 'ciqual', grp: gi, ciqual: true, label: n});
+});
+BASE.forEach(f => f.k = norm(f.label));
+const findBase = (n, s) => BASE.find(f => f.n === n && f.s === s && !f.ciqual);
+/* Recherche : tous les mots doivent apparaître ; priorité aux aliments perso, puis à ceux du plan,
+   puis aux noms qui commencent par la recherche, puis aux noms courts */
+function searchFoods(list, query, limit) {
+  const SYN = {coca: 'cola', coke: 'cola', nutella: 'pate a tartiner', burger: 'hamburger', pdt: 'pomme de terre', frite: 'frite', yogourt: 'yaourt', yoghourt: 'yaourt'};
+  const q = norm(query.trim()), words = q.split(/[\s,]+/).filter(Boolean)
+    .flatMap(w => (SYN[w] || w).split(' ')).map(w => w.length > 3 ? w.replace(/[sx]$/, '') : w);
+  if (!words.length) return list.slice(0, limit);
+  const atWordStart = f => words.every(w => (' ' + f.k.replace(/[(),%]/g, ' ')).includes(' ' + w));
+  const rank = f => (atWordStart(f) ? 0 : 5000) + (f.custom ? 0 : f.ciqual ? 2 : 1) * 1000 + (f.k.startsWith(words[0]) ? 0 : 500) + Math.min(f.k.length, 400);
+  return list.filter(f => words.every(w => f.k.includes(w))).sort((a, b) => rank(a) - rank(b)).slice(0, limit);
+}
 let FOODS = BASE.slice();
 function rebuildFoods() {
   FOODS = BASE.concat(state.custom.map(c => ({
     key: 'u' + c.id, n: c.name, s: '', P: +c.p100, G: +c.g100, L: +c.l100, K: +c.kcal100, em: '🏷️', custom: true, label: c.name
   })));
-  FOODS.forEach(f => f.k = norm(f.label));
+  FOODS.forEach(f => { if (!f.k) f.k = norm(f.label); });
 }
 
 /* ========== État ========== */
@@ -247,12 +265,8 @@ function openAdd(meal) {
   searchAdd(); openModal('addModal'); setTimeout(() => $('addQ').focus(), 50);
 }
 function searchAdd() {
-  const q = norm($('addQ').value.trim());
-  const words = q.split(/\s+/).filter(Boolean);
-  let list = FOODS.filter(f => words.every(w => f.k.includes(w)));
-  list.sort((a, b) => (!!b.custom - !!a.custom) || (a.k.startsWith(q) ? -1 : 0) - (b.k.startsWith(q) ? -1 : 0));
-  list = list.slice(0, 40);
-  $('addRes').innerHTML = list.length ? list.map(f => `<li data-key="${f.key}"${pick && pick.key === f.key ? ' class="sel"' : ''}><span>${f.em} ${esc(f.label)}${f.custom ? '<span class="cu">perso</span>' : ''}</span><small>${fr0(f.K)} kcal/100 g</small></li>`).join('')
+  const list = searchFoods(FOODS, $('addQ').value, 60);
+  $('addRes').innerHTML = list.length ? list.map(f => `<li data-key="${f.key}"${pick && pick.key === f.key ? ' class="sel"' : ''}><span>${f.em} ${esc(f.label)}${f.custom ? '<span class="cu">perso</span>' : ''}</span><small>${fr0(f.K)} kcal/100 g</small></li>`).join('') + (list.length === 60 ? '<li style="cursor:default"><span class="muted">… précise ta recherche pour voir plus de résultats</span></li>' : '')
     : '<li style="cursor:default"><span class="muted">Aucun résultat. Crée un aliment perso ⬇</span></li>';
 }
 function selectFood(f, grams = 100) {
@@ -581,14 +595,34 @@ function renderFoods() {
     <p>Multiplie la valeur du tableau par le poids de la portion, puis divise par 100. Par exemple :</p>
     <div class="formula">170 g de filet de poulet cru × 23,4 ÷ 100 = <span class="r">environ 40 g de protéines</span></div>
     <p class="note">Pour le skyr, la purée de cacahuètes ou le thon en boîte, utilise les valeurs de l'emballage si elles diffèrent du tableau.</p></div>`;
-  $('foods').innerHTML = CATS.map(c => sec(c) + (c.id === 'feculents' ? SWAP : '')).join('') + CALC + '<div id="customNote"></div><p class="noresult" id="nores">Aucun aliment trouvé 🤷</p>';
-  $('toc').innerHTML = CATS.map(c => `<li><a href="#${c.id}">${c.em} ${c.t.split(/,| et /)[0]}</a></li>`).join('') + '<li><a href="#calcul">🧮 Calcul</a></li>';
+  $('foods').innerHTML = CATS.map(c => sec(c) + (c.id === 'feculents' ? SWAP : '')).join('') + CALC + `<section class="cat" id="ciqual">
+      <div class="cat-head"><span class="em">📚</span><div><h2>Table Ciqual complète</h2><small>${fr0(BASE.length - N_CURATED)} aliments · Anses 2025 · kcal officielles</small></div></div>
+      <div class="ciq-tools"><select id="ciqGrp" aria-label="Catégorie"><option value="">Toutes les catégories</option>${typeof CIQUAL_GROUPS !== 'undefined' ? CIQUAL_GROUPS.map((g, i) => `<option value="${i}">${GRP_EM[i] || ''} ${esc(cap(g))}</option>`).join('') : ''}</select></div>
+      <div class="tbl"><table class="food">
+        <thead><tr><th>Aliment</th><th><span class="d" style="background:var(--p)"></span>Prot.</th><th><span class="d" style="background:var(--g)"></span>Gluc.</th><th><span class="d" style="background:var(--l)"></span>Lip.</th></tr></thead>
+        <tbody id="ciqBody"></tbody></table></div>
+      <p class="clickhint" id="ciqHint"></p>
+    </section>` + '<div id="customNote"></div><p class="noresult" id="nores">Aucun aliment trouvé 🤷</p>';
+  $('toc').innerHTML = CATS.map(c => `<li><a href="#${c.id}">${c.em} ${c.t.split(/,| et /)[0]}</a></li>`).join('') + '<li><a href="#calcul">🧮 Calcul</a></li><li><a href="#ciqual">📚 Table complète</a></li>';
+  renderCiqual();
 }
 function renderFoodsCustomNote() {
   const n = state.custom.length;
   if ($('customNote')) $('customNote').innerHTML = n ? `<div class="callout green"><h3>🏷️ Mes aliments perso</h3><p style="margin:0">${state.custom.map(c => esc(c.name) + ` <span class="muted">(${fr0(c.kcal100)} kcal/100 g)</span>`).join(' · ')}</p></div>` : '';
 }
+const CIQ_MAX = 150;
+function renderCiqual() {
+  const q = $('q') ? $('q').value : '', g = $('ciqGrp') ? $('ciqGrp').value : '';
+  let pool = BASE.filter(f => f.ciqual && (g === '' || f.grp === +g));
+  const list = q.trim() ? searchFoods(pool, q, CIQ_MAX) : pool.slice(0, CIQ_MAX);
+  const total = q.trim() ? null : pool.length;
+  $('ciqBody').innerHTML = list.map(f => `<tr data-key="${f.key}"><td class="n">${esc(f.n)}<span class="kc">${fr0(f.K)} kcal</span></td>${cell(f.P, 'var(--p)')}${cell(f.G, 'var(--g)')}${cell(f.L, 'var(--l)')}</tr>`).join('')
+    || '<tr><td colspan="4" class="muted" style="text-align:center;padding:20px">Aucun aliment trouvé dans la table complète</td></tr>';
+  $('ciqHint').textContent = list.length >= CIQ_MAX ? `👆 ${CIQ_MAX} premiers résultats${total ? ' sur ' + fr0(total) : ''} : utilise la recherche ou la catégorie pour affiner.` : `👆 ${list.length} aliment${list.length > 1 ? 's' : ''}. Clique pour calculer une portion.`;
+  return list.length;
+}
 renderFoods();
+$('foods').addEventListener('change', e => { if (e.target.id === 'ciqGrp') renderCiqual(); });
 // Les ancres du sommaire ne doivent pas changer d'onglet
 $('toc').addEventListener('click', e => {
   const a = e.target.closest('a'); if (!a) return;
@@ -596,12 +630,13 @@ $('toc').addEventListener('click', e => {
 });
 $('q').addEventListener('input', () => {
   const q = norm($('q').value.trim()); let any = false;
-  document.querySelectorAll('#foods .cat').forEach(sec => {
+  document.querySelectorAll('#foods .cat:not(#ciqual)').forEach(sec => {
     let vis = 0;
     sec.querySelectorAll('tbody tr').forEach(tr => { const ok = !q || tr.dataset.k.includes(q); tr.classList.toggle('none', !ok); if (ok) vis++; });
     sec.classList.toggle('none', vis === 0); if (vis) any = true;
   });
   document.querySelectorAll('#foods .callout').forEach(c => c.classList.toggle('none', !!q));
+  if (renderCiqual() && q) any = true;
   $('nores').style.display = any ? 'none' : 'block';
 });
 
