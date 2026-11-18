@@ -46,7 +46,7 @@ function rebuildFoods() {
 }
 
 /* ========== État ========== */
-const state = {user: null, settings: {...DEFAULT_SETTINGS}, date: today(), dayType: 'repos', entries: [], weights: [], custom: []};
+const state = {settings: {...DEFAULT_SETTINGS}, date: today(), dayType: 'repos', entries: [], weights: [], custom: []};
 let sb = null;
 
 const target = () => {
@@ -58,8 +58,12 @@ const sumVals = list => list.reduce((a, e) => { const v = entryVals(e); a.K += v
 const entryFromFood = (f, grams, meal, date) => ({date, meal, name: f.label.slice(0, 120), grams, p100: f.P, g100: f.G, l100: f.L, kcal100: Math.round(f.K * 10) / 10});
 
 /* ========== Démarrage ========== */
+// Pas de connexion : toutes les données appartiennent à un seul « propriétaire » fixe.
+const OWNER = '00000000-0000-0000-0000-000000000001';
+let started = false;
+
 function screen(id) {
-  ['scrLoading', 'scrConfig', 'scrAuth'].forEach(s => $(s).classList.toggle('hidden', s !== id));
+  ['scrLoading', 'scrConfig'].forEach(s => $(s).classList.toggle('hidden', s !== id));
   $('app').classList.toggle('hidden', id !== 'app');
   document.body.classList.toggle('in-app', id === 'app');
 }
@@ -67,70 +71,36 @@ function screen(id) {
 function boot() {
   const cfg = window.APP_CONFIG || {};
   if (!cfg.SUPABASE_URL || !cfg.SUPABASE_KEY || !window.supabase) { screen('scrConfig'); return; }
-  sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_KEY);
-  sb.auth.onAuthStateChange((ev, session) => {
-    const u = session && session.user;
-    // Ne pas appeler Supabase directement dans ce callback (recommandation supabase-js)
-    setTimeout(() => {
-      if (u && (!state.user || state.user.id !== u.id)) start(u);
-      else if (!u) { state.user = null; screen('scrAuth'); }
-    }, 0);
-  });
+  sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_KEY, {auth: {persistSession: false, autoRefreshToken: false}});
+  start();
 }
 
-/* ---- Connexion ---- */
-function authMsg(t, ok = false) { const m = $('aMsg'); m.textContent = t; m.className = 'msg ' + (ok ? 'ok' : 'err'); }
-const frAuthErr = e => {
-  const m = (e && e.message) || String(e);
-  if (/invalid login/i.test(m)) return 'E-mail ou mot de passe incorrect.';
-  if (/not confirmed/i.test(m)) return 'Confirme d’abord ton adresse via le lien reçu par e-mail.';
-  if (/already registered/i.test(m)) return 'Un compte existe déjà avec cet e-mail : clique sur « Se connecter ».';
-  if (/at least 6/i.test(m)) return 'Le mot de passe doit faire au moins 6 caractères.';
-  return m;
-};
-$('authForm').addEventListener('submit', async e => {
-  e.preventDefault(); authMsg('');
-  const {error} = await sb.auth.signInWithPassword({email: $('aEmail').value.trim(), password: $('aPass').value});
-  if (error) authMsg(frAuthErr(error));
-});
-$('aSignup').addEventListener('click', async () => {
-  if (!$('authForm').reportValidity()) return;
-  authMsg('');
-  const {data, error} = await sb.auth.signUp({
-    email: $('aEmail').value.trim(), password: $('aPass').value,
-    options: {emailRedirectTo: location.origin + location.pathname}
-  });
-  if (error) return authMsg(frAuthErr(error));
-  if (!data.session) authMsg('Compte créé ! Clique sur le lien reçu par e-mail pour l’activer, puis reviens te connecter.', true);
-});
-$('logout').addEventListener('click', () => sb.auth.signOut());
-
-async function start(user) {
-  state.user = user;
+async function start() {
   screen('scrLoading');
   try {
     const [st, cu, wt] = await Promise.all([
-      sb.from('settings').select('*').maybeSingle(),
+      sb.from('settings').select('*').eq('user_id', OWNER).maybeSingle(),
       sb.from('custom_foods').select('*').order('name'),
       sb.from('weights').select('date,kg').order('date')
     ]);
     if (st.error) throw st.error; if (cu.error) throw cu.error; if (wt.error) throw wt.error;
     if (st.data) state.settings = st.data;
     else {
-      const ins = await sb.from('settings').insert({user_id: user.id}).select().single();
+      const ins = await sb.from('settings').insert({user_id: OWNER}).select().single();
       if (ins.error) throw ins.error;
       state.settings = ins.data;
     }
     state.custom = cu.data;
     state.weights = wt.data.map(w => ({date: w.date, kg: +w.kg}));
     rebuildFoods(); renderFoodsCustomNote();
-    $('uEmail').textContent = user.email;
+    started = true;
     screen('app');
     renderPlan();
     route();
     await loadDay();
   } catch (e) {
-    screen('scrAuth'); authMsg('Impossible de charger les données : ' + (e.message || e) + '. As-tu bien exécuté schema.sql dans Supabase ?');
+    console.error(e);
+    $('scrLoading').innerHTML = '<div class="card"><h1>😕 Oups</h1><p>Impossible de charger les données : ' + esc(e.message || e) + '</p><button class="btn primary" onclick="location.reload()">Réessayer</button></div>';
   }
 }
 
@@ -143,7 +113,7 @@ function route() {
   if (t === 'poids') renderWeights();
   window.scrollTo(0, 0);
 }
-window.addEventListener('hashchange', () => { if (state.user) route(); });
+window.addEventListener('hashchange', () => { if (started) route(); });
 
 /* ========== JOURNAL ========== */
 async function loadDay() {
@@ -231,7 +201,7 @@ $('dLabel').addEventListener('change', e => { if (e.target.id === 'dPick' && e.t
 $('dType').addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b || b.dataset.t === state.dayType) return;
   const prev = state.dayType; state.dayType = b.dataset.t; renderJournal();
-  const {error} = await sb.from('days').upsert({user_id: state.user.id, date: state.date, day_type: state.dayType});
+  const {error} = await sb.from('days').upsert({user_id: OWNER, date: state.date, day_type: state.dayType});
   if (error) { state.dayType = prev; renderJournal(); fail(error); }
 });
 
@@ -395,7 +365,7 @@ $('wForm').addEventListener('submit', async e => {
   e.preventDefault();
   const date = $('wDate').value, kg = Math.round(parseFloat(String($('wKg').value).replace(',', '.')) * 100) / 100;
   if (!date || !(kg >= 20 && kg <= 400)) return toast('Poids invalide', true);
-  const {error} = await sb.from('weights').upsert({user_id: state.user.id, date, kg});
+  const {error} = await sb.from('weights').upsert({user_id: OWNER, date, kg});
   if (error) return fail(error);
   state.weights = state.weights.filter(w => w.date !== date).concat({date, kg}).sort((a, b) => a.date < b.date ? -1 : 1);
   $('wKg').value = ''; renderWeights(); toast('Pesée enregistrée ✔');
@@ -434,7 +404,7 @@ function renderPlan() {
   SKEYS.forEach(k => $('s_' + k).value = s[k]);
 }
 async function saveSettings(vals) {
-  const {data, error} = await sb.from('settings').update({...vals, updated_at: new Date().toISOString()}).eq('user_id', state.user.id).select().single();
+  const {data, error} = await sb.from('settings').update({...vals, updated_at: new Date().toISOString()}).eq('user_id', OWNER).select().single();
   if (error) return fail(error);
   state.settings = data; renderPlan(); renderJournal(); toast('Cibles enregistrées ✔');
 }

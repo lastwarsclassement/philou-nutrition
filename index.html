@@ -25,24 +25,6 @@
   </div>
 </div>
 
-<!-- Connexion -->
-<div class="screen hidden" id="scrAuth">
-  <div class="card">
-    <div style="font-size:2.6rem;line-height:1">🥦🍗🍚</div>
-    <h1>Plan déficit</h1>
-    <p class="muted" style="margin:0">Connecte-toi pour retrouver ton journal et ton suivi de poids sur tous tes appareils.</p>
-    <form class="auth-form" id="authForm">
-      <label class="field">E-mail<input type="email" id="aEmail" autocomplete="email" required></label>
-      <label class="field">Mot de passe<input type="password" id="aPass" autocomplete="current-password" minlength="6" required></label>
-      <div class="auth-actions">
-        <button class="btn primary" type="submit" id="aLogin">Se connecter</button>
-        <button class="btn" type="button" id="aSignup">Créer un compte</button>
-      </div>
-      <p class="msg" id="aMsg"></p>
-    </form>
-  </div>
-</div>
-
 <!-- Application -->
 <div id="app" class="hidden">
   <header class="app">
@@ -54,8 +36,7 @@
         <a href="#plan" data-tab="plan"><span class="ic">📋</span>Mon plan</a>
         <a href="#aliments" data-tab="aliments"><span class="ic">🔎</span>Aliments</a>
       </nav>
-      <div class="user"><span class="email muted" id="uEmail"></span><button class="btn small ghost" id="logout" title="Se déconnecter">Déconnexion</button></div>
-    </div>
+          </div>
   </header>
 
   <!-- JOURNAL -->
