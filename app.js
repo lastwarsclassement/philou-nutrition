@@ -64,7 +64,7 @@ function rebuildFoods() {
 }
 
 /* ========== État ========== */
-const state = {settings: {...DEFAULT_SETTINGS}, date: today(), dayType: 'repos', entries: [], weights: [], custom: []};
+const state = {user: null, settings: {...DEFAULT_SETTINGS}, date: today(), dayType: 'repos', entries: [], weights: [], custom: []};
 let sb = null;
 
 const target = () => {
@@ -76,12 +76,10 @@ const sumVals = list => list.reduce((a, e) => { const v = entryVals(e); a.K += v
 const entryFromFood = (f, grams, meal, date) => ({date, meal, name: f.label.slice(0, 120), grams, p100: f.P, g100: f.G, l100: f.L, kcal100: Math.round(f.K * 10) / 10});
 
 /* ========== Démarrage ========== */
-// Pas de connexion : toutes les données appartiennent à un seul « propriétaire » fixe.
-const OWNER = '00000000-0000-0000-0000-000000000001';
 let started = false;
-
+const SCREENS = ['scrLoading', 'scrConfig', 'scrAuth', 'scrProfile'];
 function screen(id) {
-  ['scrLoading', 'scrConfig'].forEach(s => $(s).classList.toggle('hidden', s !== id));
+  SCREENS.forEach(x => $(x).classList.toggle('hidden', x !== id));
   $('app').classList.toggle('hidden', id !== 'app');
   document.body.classList.toggle('in-app', id === 'app');
 }
@@ -89,37 +87,158 @@ function screen(id) {
 function boot() {
   const cfg = window.APP_CONFIG || {};
   if (!cfg.SUPABASE_URL || !cfg.SUPABASE_KEY || !window.supabase) { screen('scrConfig'); return; }
-  sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_KEY, {auth: {persistSession: false, autoRefreshToken: false}});
-  start();
+  sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_KEY);
+  sb.auth.onAuthStateChange((ev, session) => {
+    const u = session && session.user;
+    // Ne pas appeler Supabase directement dans ce callback (recommandation supabase-js)
+    setTimeout(() => {
+      if (u && !state.user) start(u);
+      else if (u && state.user.id !== u.id) location.reload();     // autre compte : on repart de zéro
+      else if (!u && state.user) location.reload();                // déconnexion : on vide tout
+      else if (!u) screen('scrAuth');
+    }, 0);
+  });
 }
 
-async function start() {
+/* ---- Connexion ---- */
+function authMsg(t, ok = false) { const m = $('aMsg'); m.textContent = t; m.className = 'msg ' + (ok ? 'ok' : 'err'); }
+const frAuthErr = e => {
+  const m = (e && e.message) || String(e);
+  if (/invalid login/i.test(m)) return 'E-mail ou mot de passe incorrect.';
+  if (/not confirmed/i.test(m)) return 'Ce compte n’est pas encore confirmé.';
+  if (/already registered/i.test(m)) return 'Un compte existe déjà avec cet e-mail : clique sur « Se connecter ».';
+  if (/at least 6|password should/i.test(m)) return 'Le mot de passe doit faire au moins 6 caractères.';
+  if (/rate limit/i.test(m)) return 'Trop de tentatives, réessaie dans quelques minutes.';
+  return m;
+};
+$('authForm').addEventListener('submit', async e => {
+  e.preventDefault(); authMsg('');
+  const {error} = await sb.auth.signInWithPassword({email: $('aEmail').value.trim(), password: $('aPass').value});
+  if (error) authMsg(frAuthErr(error));
+});
+$('aSignup').addEventListener('click', async () => {
+  if (!$('authForm').reportValidity()) return;
+  authMsg('');
+  const {data, error} = await sb.auth.signUp({email: $('aEmail').value.trim(), password: $('aPass').value,
+    options: {emailRedirectTo: location.origin + location.pathname}});
+  if (error) return authMsg(frAuthErr(error));
+  if (!data.session) authMsg('Compte créé, mais il doit être confirmé par e-mail avant la première connexion.', true);
+});
+$('logout').addEventListener('click', () => sb.auth.signOut());
+
+/* ---- Profil et calcul des consignes (même méthode que le plan de Philou) ---- */
+const PHILOU = {sex: 'H', age: 44, height_cm: 175, weight_start: 81.8, activity: 1.35, sessions: 3};
+const PHILOU_PLAN = {...DEFAULT_SETTINGS, maint_rest: 2290, maint_sport: 2690};
+const KCAL_SESSION = 400;   // dépense d'une séance d'environ 1 h
+const DEFICIT = 400;        // déficit visé par jour
+function computePlan(p) {
+  const bmr = 10 * p.weight_start + 6.25 * p.height_cm - 5 * p.age + (p.sex === 'F' ? -161 : 5);   // Mifflin–St Jeor
+  const mr = Math.round(bmr * p.activity / 10) * 10, ms = p.sessions > 0 ? mr + KCAL_SESSION : mr;
+  const floor = p.sex === 'F' ? 1200 : 1500, r50 = x => Math.round(x / 50) * 50;
+  const kr = Math.max(floor, r50(mr - DEFICIT)), ks = Math.max(floor, r50(ms - DEFICIT));
+  const P = Math.min(220, Math.round(1.8 * p.weight_start / 10) * 10);       // ≈ 1,8 g/kg
+  const F = Math.round(0.32 * kr / 9);                                         // ≈ 32 % des kcal
+  const G = k => Math.max(0, Math.round((k - 4 * P - 9 * F) / 4));
+  return {maint_rest: mr, maint_sport: ms, kcal_rest: kr, kcal_sport: ks, protein: P, carbs_rest: G(kr), carbs_sport: G(ks), fat: F, bmr: Math.round(bmr)};
+}
+const planValues = p => p.plan === 'philou' ? {...PHILOU_PLAN} : computePlan(p);
+const isPhilou = () => state.settings.plan === 'philou';
+const sportName = () => isPhilou() ? 'Crosstraining' : 'Sport';
+
+let pfMode = 'create';
+function readProfile() {
+  return {first_name: $('pfName').value.trim().slice(0, 40), plan: $('pfPlanPhilou').checked ? 'philou' : 'custom',
+    sex: $('pfSex').value, age: +$('pfAge').value, height_cm: +$('pfHeight').value,
+    weight_start: Math.round(parseFloat(String($('pfWeight').value).replace(',', '.')) * 10) / 10,
+    activity: +$('pfActivity').value, sessions: +$('pfSessions').value};
+}
+function fillProfile(p) {
+  $('pfName').value = p.first_name || ''; $('pfPlanPhilou').checked = p.plan === 'philou'; $('pfPlanCustom').checked = p.plan !== 'philou';
+  $('pfSex').value = p.sex || 'H'; $('pfAge').value = p.age || ''; $('pfHeight').value = p.height_cm || '';
+  $('pfWeight').value = p.weight_start ? String(p.weight_start).replace('.', ',') : ''; $('pfActivity').value = String(p.activity || 1.35); $('pfSessions').value = p.sessions ?? 3;
+}
+function updProfilePreview() {
+  const p = readProfile();
+  const ok = p.age >= 15 && p.age <= 100 && p.height_cm >= 120 && p.height_cm <= 230 && p.weight_start >= 30 && p.weight_start <= 300;
+  if (!ok && p.plan !== 'philou') { $('pfPreview').innerHTML = '<p class="muted" style="margin:0">Remplis ton âge, ta taille et ton poids pour voir tes consignes.</p>'; return; }
+  const v = planValues(p);
+  $('pfPreview').innerHTML = `<p style="margin:0 0 8px;font-weight:800">${p.plan === 'philou' ? '📄 Consignes du plan de Philou' : '🧮 Tes consignes de départ'}</p>
+    <table class="ptable"><thead><tr><th></th><th>Sans sport</th><th>Jour de sport</th></tr></thead><tbody>
+    <tr><td>Maintien estimé</td><td>${fr0(v.maint_rest)} kcal</td><td>${fr0(v.maint_sport)} kcal</td></tr>
+    <tr><td><b>Cible</b></td><td><b>${fr0(v.kcal_rest)} kcal</b></td><td><b>${fr0(v.kcal_sport)} kcal</b></td></tr>
+    <tr><td>Protéines</td><td>${v.protein} g</td><td>${v.protein} g</td></tr>
+    <tr><td>Glucides</td><td>${v.carbs_rest} g</td><td>${v.carbs_sport} g</td></tr>
+    <tr><td>Lipides</td><td>${v.fat} g</td><td>${v.fat} g</td></tr></tbody></table>
+    <p class="muted" style="margin:8px 0 0;font-size:.85rem">${p.plan === 'philou' ? 'Plan établi pour Philou (PDF), avec ses journées types.' : `Mifflin–St Jeor (${fr0(v.bmr)} kcal au repos) × activité, + ${KCAL_SESSION} kcal les jours de séance, − ${DEFICIT} kcal de déficit, protéines ≈ 1,8 g/kg. Tu pourras les ajuster ensuite dans « Mon plan ».`}</p>`;
+}
+function openProfile(mode) {
+  pfMode = mode;
+  fillProfile(mode === 'edit' ? state.settings : {plan: 'custom', sessions: 3, activity: 1.35});
+  $('pfTitle').textContent = mode === 'edit' ? '✏️ Mon profil' : '👋 Création de ton profil';
+  $('pfSubmit').textContent = mode === 'edit' ? 'Enregistrer et recalculer mes cibles' : 'Créer mon profil';
+  $('pfCancel').classList.toggle('hidden', mode !== 'edit');
+  $('pfEditNote').classList.toggle('hidden', mode !== 'edit');
+  updProfilePreview(); screen('scrProfile'); window.scrollTo(0, 0);
+}
+$('pfForm').addEventListener('input', updProfilePreview);
+$('pfForm').addEventListener('change', e => {
+  if (e.target.id === 'pfPlanPhilou' && e.target.checked) {   // pré-remplit le profil de Philou
+    const n = $('pfName').value; fillProfile({...PHILOU, plan: 'philou', first_name: n || 'Philou'});
+  }
+  updProfilePreview();
+});
+$('pfCancel').addEventListener('click', () => screen('app'));
+$('pfForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const p = readProfile();
+  if (!(p.weight_start >= 30 && p.weight_start <= 300)) return toast('Poids invalide (ex. 81,8)', true);
+  const vals = {...p, ...planValues(p), updated_at: new Date().toISOString()}; delete vals.bmr;
+  $('pfSubmit').disabled = true;
+  try {
+    const q = pfMode === 'edit'
+      ? sb.from('settings').update(vals).eq('user_id', state.user.id).select().single()
+      : sb.from('settings').insert({user_id: state.user.id, ...vals}).select().single();
+    const {data, error} = await q; if (error) throw error;
+    state.settings = data;
+    if (pfMode === 'create') {   // première pesée = poids de départ
+      await sb.from('weights').upsert({user_id: state.user.id, date: today(), kg: p.weight_start});
+      await enterApp();
+    } else { screen('app'); renderPlan(); renderJournal(); toast('Profil enregistré ✔'); }
+  } catch (er) { fail(er); } finally { $('pfSubmit').disabled = false; }
+});
+
+async function start(user) {
+  state.user = user;
   screen('scrLoading');
   try {
-    const [st, cu, wt] = await Promise.all([
-      sb.from('settings').select('*').eq('user_id', OWNER).maybeSingle(),
+    const st = await sb.from('settings').select('*').eq('user_id', user.id).maybeSingle();
+    if (st.error) throw st.error;
+    if (!st.data) return openProfile('create');
+    state.settings = st.data;
+    await enterApp();
+  } catch (e) { showError(e); }
+}
+async function enterApp() {
+  try {
+    const [cu, wt] = await Promise.all([
       sb.from('custom_foods').select('*').order('name'),
       sb.from('weights').select('date,kg').order('date')
     ]);
-    if (st.error) throw st.error; if (cu.error) throw cu.error; if (wt.error) throw wt.error;
-    if (st.data) state.settings = st.data;
-    else {
-      const ins = await sb.from('settings').insert({user_id: OWNER}).select().single();
-      if (ins.error) throw ins.error;
-      state.settings = ins.data;
-    }
+    if (cu.error) throw cu.error; if (wt.error) throw wt.error;
     state.custom = cu.data;
     state.weights = wt.data.map(w => ({date: w.date, kg: +w.kg}));
     rebuildFoods(); renderFoodsCustomNote();
+    $('uName').textContent = state.settings.first_name || state.user.email;
     started = true;
     screen('app');
     renderPlan();
     route();
     await loadDay();
-  } catch (e) {
-    console.error(e);
-    $('scrLoading').innerHTML = '<div class="card"><h1>😕 Oups</h1><p>Impossible de charger les données : ' + esc(e.message || e) + '</p><button class="btn primary" onclick="location.reload()">Réessayer</button></div>';
-  }
+  } catch (e) { showError(e); }
+}
+function showError(e) {
+  console.error(e); screen('scrLoading');
+  $('scrLoading').innerHTML = '<div class="card"><h1>😕 Oups</h1><p>Impossible de charger les données : ' + esc(e.message || e) + '</p><button class="btn primary" onclick="location.reload()">Réessayer</button></div>';
 }
 
 /* ========== Navigation par onglets ========== */
@@ -164,11 +283,12 @@ function renderJournal() {
   const s = state.settings;
   $('tRest').textContent = fr0(s.kcal_rest) + ' kcal';
   $('tSport').textContent = fr0(s.kcal_sport) + ' kcal';
+  $('tSportName').textContent = sportName();
   document.querySelectorAll('#dType button').forEach(b => b.classList.toggle('on', b.dataset.t === state.dayType));
   renderSummary();
 
   const tplK = sumVals(templateEntries(state.dayType)).K;
-  $('tpl').innerHTML = state.entries.length ? '' : `<div class="tplbox"><p>📋 Journée vide. Tu peux partir de la journée type « ${state.dayType === 'sport' ? 'crosstraining' : 'sans sport'} » (≈ ${fr0(tplK)} kcal) puis ajuster.</p><button class="btn primary small" id="fillTpl">Remplir avec la journée type</button></div>`;
+  $('tpl').innerHTML = state.entries.length ? '' : `<div class="tplbox"><p>📋 Journée vide. Tu peux partir de la journée type « ${state.dayType === 'sport' ? sportName().toLowerCase() : 'sans sport'} »${isPhilou() ? '' : ' adaptée à ta cible'} (≈ ${fr0(tplK)} kcal) puis ajuster.</p><button class="btn primary small" id="fillTpl">Remplir avec la journée type</button></div>`;
 
   $('meals').innerHTML = MEALS.map(([k, n, em]) => {
     const list = state.entries.filter(e => e.meal === k);
@@ -201,6 +321,18 @@ function templateEntries(type) {
   MEALS.forEach(([k]) => TEMPLATES[type][k].forEach(([n, s, g]) => {
     const f = findBase(n, s); if (f) out.push(entryFromFood(f, g, k, state.date));
   }));
+  if (isPhilou()) return out;
+  // Autres profils : mêmes repas ; les aliments riches en protéines suivent la cible de protéines,
+  // les autres sont ajustés pour atteindre la cible de kcal
+  const st = state.settings, tgtK = type === 'sport' ? st.kcal_sport : st.kcal_rest;
+  const isProt = e => 4 * e.p100 / e.kcal100 > 0.4;
+  const prot = out.filter(isProt), other = out.filter(e => !isProt(e));
+  const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+  const rP = clamp(st.protein / sumVals(out).P, 0.5, 1.6);
+  const rO = clamp((tgtK - sumVals(prot).K * rP) / sumVals(other).K, 0.3, 2);
+  const round = g => g < 20 ? Math.max(1, Math.round(g)) : Math.round(g / 5) * 5;
+  prot.forEach(e => e.grams = round(e.grams * rP));
+  other.forEach(e => e.grams = round(e.grams * rO));
   return out;
 }
 
@@ -221,7 +353,7 @@ $('dLabel').addEventListener('change', e => { if (e.target.id === 'dPick' && e.t
 $('dType').addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b || b.dataset.t === state.dayType) return;
   const prev = state.dayType; state.dayType = b.dataset.t; renderJournal();
-  const {error} = await sb.from('days').upsert({user_id: OWNER, date: state.date, day_type: state.dayType});
+  const {error} = await sb.from('days').upsert({user_id: state.user.id, date: state.date, day_type: state.dayType});
   if (error) { state.dayType = prev; renderJournal(); fail(error); }
 });
 
@@ -395,7 +527,7 @@ function renderChart() {
 async function saveWeight(date, raw) {
   const kg = Math.round(parseFloat(String(raw).replace(',', '.')) * 100) / 100;
   if (!date || !(kg >= 20 && kg <= 400)) { toast('Poids invalide (ex. 81,4)', true); return false; }
-  const {error} = await sb.from('weights').upsert({user_id: OWNER, date, kg});
+  const {error} = await sb.from('weights').upsert({user_id: state.user.id, date, kg});
   if (error) { fail(error); return false; }
   state.weights = state.weights.filter(w => w.date !== date).concat({date, kg}).sort((a, b) => a.date < b.date ? -1 : 1);
   toast(`Pesée enregistrée : ${fr(kg)} kg ✔`);
@@ -413,7 +545,7 @@ function renderQuickWeigh() {
   const w = weightOn(state.date);
   $('qWLabel').textContent = state.date === today() ? 'Pesée du matin' : 'Pesée du ' + shortDate(state.date);
   $('qKg').value = '';
-  $('qKg').placeholder = w ? fr(w.kg) : (state.weights.length ? fr(state.weights[state.weights.length - 1].kg) : '81,8');
+  $('qKg').placeholder = w ? fr(w.kg) : (state.weights.length ? fr(state.weights[state.weights.length - 1].kg) : fr(state.settings.weight_start || 80));
   $('qWNow').innerHTML = w ? `✔ <b>${fr(w.kg)} kg</b> enregistré` : '<span class="muted">pas encore pesé</span>';
 }
 $('qW').addEventListener('submit', async e => {
@@ -422,7 +554,7 @@ $('qW').addEventListener('submit', async e => {
 });
 
 /* ========== BILAN DE LA SEMAINE ========== */
-const MAINT = {repos: 2290, sport: 2690}; // dépense de maintien estimée (PDF)
+const maint = () => ({repos: state.settings.maint_rest || 2290, sport: state.settings.maint_sport || 2690}); // dépense de maintien estimée
 const mondayOf = s => { const d = parseIso(s); const wd = (d.getDay() + 6) % 7; d.setDate(d.getDate() - wd); return iso(d); };
 state.week = mondayOf(today());
 
@@ -458,7 +590,7 @@ async function renderBilan() {
   const avg = k => n ? logged.reduce((a, r) => a + r.v[k], 0) / n : 0;
   const onTarget = logged.filter(r => Math.abs(r.v.K - r.tgt) <= r.tgt * 0.1).length;
   const sportDays = rows.filter(r => r.type === 'sport').length;
-  const deficit = logged.reduce((a, r) => a + (MAINT[r.type] - r.v.K), 0);
+  const M = maint(), deficit = logged.reduce((a, r) => a + (M[r.type] - r.v.K), 0);
   const vsTarget = logged.reduce((a, r) => a + (r.v.K - r.tgt), 0);
 
   // Poids de la semaine
@@ -472,7 +604,7 @@ async function renderBilan() {
   if (!n) msgs.push(['info', '📝', 'Aucun repas saisi cette semaine', 'Remplis le journal pour obtenir un bilan.']);
   else {
     if (vsTarget > 0 && vsTarget / n > 150) msgs.push(['warn', '🍕', `En moyenne +${fr0(vsTarget / n)} kcal par jour au-dessus de la cible`, 'Regarde les jours en rouge dans le tableau pour voir où ça coince.']);
-    else if (vsTarget < 0 && -vsTarget / n > 250) msgs.push(['warn', '🥗', `En moyenne ${fr0(-vsTarget / n)} kcal par jour sous la cible`, 'Attention à ne pas trop manger peu : ça fatigue et ça fait perdre du muscle, surtout avec le crosstraining.']);
+    else if (vsTarget < 0 && -vsTarget / n > 250) msgs.push(['warn', '🥗', `En moyenne ${fr0(-vsTarget / n)} kcal par jour sous la cible`, 'Attention à ne pas trop manger peu : ça fatigue et ça fait perdre du muscle, surtout avec le sport.']);
     else msgs.push(['good', '🎯', 'Apports proches de la cible', `${onTarget} jour${onTarget > 1 ? 's' : ''} sur ${n} à ±10 % de la cible. Bravo !`]);
     if (avg('P') < s.protein * 0.85) msgs.push(['warn', '🍗', `Protéines un peu justes : ${fr0(avg('P'))} g par jour en moyenne`, `L’objectif est ${s.protein} g : ajoute du skyr, du poulet, du thon ou des œufs.`]);
   }
@@ -515,7 +647,7 @@ async function renderBilan() {
       <div class="stat"><b class="cp">${n ? fr0(avg('P')) : '–'}</b><small>g de protéines / jour</small></div>
       <div class="stat"><b>${n}/7</b><small>jour${n > 1 ? 's' : ''} saisi${n > 1 ? 's' : ''}</small></div>
       <div class="stat"><b>${onTarget}</b><small>jour${onTarget > 1 ? 's' : ''} dans la cible (±10 %)</small></div>
-      <div class="stat"><b>${sportDays}/3</b><small>séances crosstraining</small></div>
+      <div class="stat"><b>${sportDays}/${state.settings.sessions ?? 3}</b><small>séances de sport</small></div>
       <div class="stat"><b class="${deficit >= 0 ? 'cl' : 'cp'}">${n ? (deficit >= 0 ? '−' : '+') + fr0(Math.abs(deficit)) : '–'}</b><small>kcal vs maintien${n ? ` ≈ ${fr(Math.abs(deficit) / 7700 * 1000, 0)} g de gras` : ''}</small></div>
     </div>
     ${msgs.map(m => `<div class="card verdict ${m[0]}"><span class="ic">${m[1]}</span><div><h3>${m[2]}</h3><p>${m[3]}</p></div></div>`).join('')}
@@ -547,31 +679,36 @@ $('wList').addEventListener('click', async e => {
 /* ========== PLAN ========== */
 const SKEYS = ['kcal_rest', 'kcal_sport', 'protein', 'carbs_rest', 'carbs_sport', 'fat'];
 function renderPlan() {
-  const s = state.settings;
-  const mR = 2290, mS = 2690;
-  $('pTable').innerHTML = `<thead><tr><th>Repère quotidien</th><th>Sans sport · 4 j</th><th>Crosstraining · 3 j</th></tr></thead><tbody>
-    <tr><td>Dépense de maintien estimée</td><td>${fr0(mR)} kcal</td><td>${fr0(mS)} kcal</td></tr>
+  const s = state.settings, M = maint(), n = s.sessions ?? 3, sp = sportName();
+  const act = {1.2: 'un quotidien sédentaire', 1.35: 'un quotidien plutôt sédentaire', 1.5: 'un quotidien actif', 1.7: 'un quotidien très actif'}[s.activity] || 'son activité';
+  $('pIntro').innerHTML = `${esc(s.first_name || '')}${s.first_name ? ' · ' : ''}${s.sex === 'F' ? 'Femme' : 'Homme'} de ${s.age} ans, ${fr(s.weight_start)} kg au départ, ${s.height_cm} cm, ${act}, ${n} ${isPhilou() ? 'cours de crosstraining' : 'séance' + (n > 1 ? 's' : '') + ' de sport'} d'environ 1 h par semaine. Objectif : un déficit d'environ <b>${fr0(M.repos - s.kcal_rest)} kcal par jour</b>.`;
+  $('pTable').innerHTML = `<thead><tr><th>Repère quotidien</th><th>Sans sport · ${7 - n} j</th><th>${sp} · ${n} j</th></tr></thead><tbody>
+    <tr><td>Dépense de maintien estimée</td><td>${fr0(M.repos)} kcal</td><td>${fr0(M.sport)} kcal</td></tr>
     <tr><td><b>Apport cible</b></td><td><b>${fr0(s.kcal_rest)} kcal</b></td><td><b>${fr0(s.kcal_sport)} kcal</b></td></tr>
-    <tr><td>Déficit visé</td><td>${fr0(mR - s.kcal_rest)} kcal</td><td>${fr0(mS - s.kcal_sport)} kcal</td></tr>
+    <tr><td>Déficit visé</td><td>${fr0(M.repos - s.kcal_rest)} kcal</td><td>${fr0(M.sport - s.kcal_sport)} kcal</td></tr>
     <tr><td>Protéines</td><td>${s.protein} g</td><td>${s.protein} g</td></tr>
     <tr><td>Glucides</td><td>${s.carbs_rest} g</td><td>${s.carbs_sport} g</td></tr>
     <tr><td>Lipides</td><td>${s.fat} g</td><td>${s.fat} g</td></tr></tbody>`;
-
-  $('pDays').innerHTML = [['repos', '🛋️ Jour sans sport'], ['sport', '🏋️ Jour crosstraining']].map(([type, title]) => {
+  $('pDaysNote').textContent = (isPhilou() ? '' : 'Portions de la journée type de référence, ajustées à ta cible. ') + 'Les pommes de terre et les légumes sont pesés cuits. Le riz, les flocons, le poulet et le saumon sont pesés avant cuisson. Les fruits sont pesés sans la peau ni le trognon.';
+  $('pDays').innerHTML = [['repos', '🛋️ Jour sans sport'], ['sport', '🏋️ Jour ' + sp.toLowerCase()]].map(([type, title]) => {
     const all = templateEntries(type), tot = sumVals(all);
-    const meals = MEALS.map(([k, n]) => {
+    const meals = MEALS.map(([k, nm]) => {
       const list = all.filter(e => e.meal === k);
-      return `<h4>${n} <span class="muted" style="font-size:.85rem">· ${fr0(sumVals(list).K)} kcal</span></h4><ul>${list.map(e => `<li><span>${esc(e.name)}</span><span>${e.grams} g</span></li>`).join('')}</ul>`;
+      return `<h4>${nm} <span class="muted" style="font-size:.85rem">· ${fr0(sumVals(list).K)} kcal</span></h4><ul>${list.map(e => `<li><span>${esc(e.name)}</span><span>${e.grams} g</span></li>`).join('')}</ul>`;
     }).join('');
     return `<div class="card dayc"><h3>${title}</h3>
       <div class="tot"><div><b>${fr0(tot.K)}</b>kcal</div><div><b class="cp">${fr0(tot.P)}</b>prot.</div><div><b class="cg">${fr0(tot.G)}</b>gluc.</div><div><b class="cl">${fr0(tot.L)}</b>lip.</div></div>
       ${meals}</div>`;
   }).join('');
-
+  $('sNote').textContent = isPhilou()
+    ? 'Le calcul de départ suppose 1,75 m et un quotidien plutôt sédentaire hors cours (Mifflin–St Jeor, facteur d’activité 1,35, environ 400 kcal par cours). Change les cibles ici si besoin.'
+    : 'Cibles calculées à partir de ton profil (Mifflin–St Jeor, activité, environ 400 kcal par séance, déficit de 400 kcal). Change-les ici si besoin.';
+  $('sKcalSportLab').firstChild.textContent = 'kcal ' + sp.toLowerCase();
+  $('sReset').textContent = isPhilou() ? 'Revenir au plan d’origine' : 'Recalculer depuis mon profil';
   SKEYS.forEach(k => $('s_' + k).value = s[k]);
 }
 async function saveSettings(vals) {
-  const {data, error} = await sb.from('settings').update({...vals, updated_at: new Date().toISOString()}).eq('user_id', OWNER).select().single();
+  const {data, error} = await sb.from('settings').update({...vals, updated_at: new Date().toISOString()}).eq('user_id', state.user.id).select().single();
   if (error) return fail(error);
   state.settings = data; renderPlan(); renderJournal(); toast('Cibles enregistrées ✔');
 }
@@ -579,7 +716,8 @@ $('sForm').addEventListener('submit', e => {
   e.preventDefault();
   const vals = {}; SKEYS.forEach(k => vals[k] = Math.round(+$('s_' + k).value)); saveSettings(vals);
 });
-$('sReset').addEventListener('click', () => saveSettings({...DEFAULT_SETTINGS}));
+$('sReset').addEventListener('click', () => { const v = planValues(state.settings); delete v.bmr; saveSettings(v); });
+$('pEdit').addEventListener('click', () => openProfile('edit'));
 
 /* ========== ALIMENTS (tableau d'origine) ========== */
 const cell = (v, col) => `<td class="v${v === 'tr' ? ' tr' : ''}">${show(v)}<div class="b"><div style="width:${Math.min(100, num(v))}%;background:${col}"></div></div></td>`;

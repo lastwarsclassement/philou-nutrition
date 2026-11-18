@@ -280,3 +280,16 @@ footer{border-top:var(--border);padding:28px 0 40px;font-size:.88rem;color:var(-
 
 .portions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
 .portions:empty{display:none}
+
+/* PROFIL */
+.screen .card.profile{max-width:560px}
+.planpick{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+.planpick label{display:flex;gap:10px;align-items:flex-start;border:var(--border);border-radius:16px;padding:12px;background:#fff;cursor:pointer}
+.planpick label:has(input:checked){background:var(--g-soft);box-shadow:3px 3px 0 var(--ink)}
+.planpick input{margin-top:4px;accent-color:var(--ink)}
+.planpick b{display:block;line-height:1.2}
+.planpick small{color:var(--muted);font-weight:700}
+.pf-grid{margin-top:4px}
+.pf-preview{margin-top:16px;background:var(--bg);border:2px dashed var(--ink);border-radius:16px;padding:14px}
+.pf-preview .ptable{background:#fff;border-radius:10px;overflow:hidden}
+@media (max-width:480px){.planpick{grid-template-columns:1fr}}

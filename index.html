@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
 
@@ -22,6 +22,58 @@
   <div class="card">
     <h1>⚙️ Presque prêt</h1>
     <p>Le site n'est pas encore relié à Supabase. Renseigne <code>SUPABASE_URL</code> et <code>SUPABASE_KEY</code> dans le fichier <code>config.js</code>.</p>
+  </div>
+</div>
+
+<!-- Connexion -->
+<div class="screen hidden" id="scrAuth">
+  <div class="card">
+    <div style="font-size:2.6rem;line-height:1">🥦🍗🍚</div>
+    <h1>Plan déficit</h1>
+    <p class="muted" style="margin:0">Chacun a son propre espace : ton journal, tes pesées et ton plan ne sont visibles que par toi.</p>
+    <form class="auth-form" id="authForm">
+      <label class="field">E-mail<input type="email" id="aEmail" autocomplete="email" required></label>
+      <label class="field">Mot de passe<input type="password" id="aPass" autocomplete="current-password" minlength="6" required></label>
+      <div class="auth-actions">
+        <button class="btn primary" type="submit">Se connecter</button>
+        <button class="btn" type="button" id="aSignup">Créer un compte</button>
+      </div>
+      <p class="msg" id="aMsg"></p>
+    </form>
+  </div>
+</div>
+
+<!-- Profil (première connexion ou modification) -->
+<div class="screen hidden" id="scrProfile">
+  <div class="card profile">
+    <h1 id="pfTitle">👋 Création de ton profil</h1>
+    <p class="muted" id="pfEditNote">Tes cibles seront recalculées à partir de ces informations.</p>
+    <form id="pfForm">
+      <label class="field">Prénom<input id="pfName" maxlength="40" required autocomplete="given-name"></label>
+      <div class="planpick">
+        <label><input type="radio" name="pfPlan" id="pfPlanCustom" checked> <span><b>🧮 Calculer mon plan</b><small>À partir de mon profil</small></span></label>
+        <label><input type="radio" name="pfPlan" id="pfPlanPhilou"> <span><b>📄 J'ai déjà un plan</b><small>Plan de Philou</small></span></label>
+      </div>
+      <div class="grid2 pf-grid">
+        <label class="field">Sexe<select id="pfSex"><option value="H">Homme</option><option value="F">Femme</option></select></label>
+        <label class="field">Âge<input type="number" id="pfAge" min="15" max="100" required inputmode="numeric"></label>
+        <label class="field">Taille (cm)<input type="number" id="pfHeight" min="120" max="230" required inputmode="numeric"></label>
+        <label class="field">Poids actuel (kg)<input type="text" id="pfWeight" inputmode="decimal" pattern="[0-9]{2,3}([.,][0-9])?" placeholder="80,5" required></label>
+      </div>
+      <label class="field" style="margin-top:10px">Activité au quotidien (hors sport)<select id="pfActivity">
+        <option value="1.2">Sédentaire : bureau, très peu de marche</option>
+        <option value="1.35">Plutôt sédentaire : un peu de marche dans la journée</option>
+        <option value="1.5">Actif : debout ou beaucoup de marche</option>
+        <option value="1.7">Très actif : travail physique</option></select></label>
+      <label class="field" style="margin-top:10px">Séances de sport d'environ 1 h par semaine<select id="pfSessions">
+        <option>0</option><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>7</option></select></label>
+      <div class="pf-preview" id="pfPreview"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+        <button class="btn primary" type="submit" id="pfSubmit">Créer mon profil</button>
+        <button class="btn" type="button" id="pfCancel">Annuler</button>
+      </div>
+      <p class="muted" style="font-size:.8rem;margin:12px 0 0">Ces repères sont des estimations générales et ne remplacent pas l'avis d'un médecin ou d'un diététicien.</p>
+    </form>
   </div>
 </div>
 
@@ -37,7 +89,8 @@
         <a href="#poids" data-tab="poids"><span class="ic">⚖️</span>Poids</a>
         <a href="#aliments" data-tab="aliments"><span class="ic">🔎</span>Aliments</a>
       </nav>
-          </div>
+      <div class="user"><span class="email muted" id="uName"></span><button class="btn small ghost" id="logout" title="Se déconnecter">Déconnexion</button></div>
+    </div>
   </header>
 
   <!-- JOURNAL -->
@@ -49,7 +102,7 @@
     </div>
     <div class="seg" id="dType">
       <button data-t="repos">🛋️ Sans sport<small id="tRest"></small></button>
-      <button data-t="sport">🏋️ Crosstraining<small id="tSport"></small></button>
+      <button data-t="sport">🏋️ <span id="tSportName">Sport</span><small id="tSport"></small></button>
     </div>
     <form class="qweigh" id="qW">
       <span class="ic">⚖️</span><span class="lab" id="qWLabel">Pesée du matin</span>
@@ -79,7 +132,7 @@
     <div class="card">
       <form class="wform" id="wForm">
         <label class="field">Date<input type="date" id="wDate" required></label>
-        <label class="field">Poids (kg)<input type="text" id="wKg" inputmode="decimal" pattern="[0-9]{2,3}([.,][0-9]{1,2})?" placeholder="81,8" required></label>
+        <label class="field">Poids (kg)<input type="text" id="wKg" inputmode="decimal" pattern="[0-9]{2,3}([.,][0-9]{1,2})?" placeholder="80,5" required></label>
         <button class="btn primary" type="submit">Enregistrer</button>
       </form>
       <p class="muted" style="margin:10px 0 0;font-size:.9rem">⏰ Pèse-toi le matin, à jeun, dans les mêmes conditions. On compare les <b>moyennes sur 7 jours</b>, pas les pesées une par une.</p>
@@ -95,13 +148,13 @@
 
   <!-- PLAN -->
   <main class="view wrap" id="v-plan">
-    <div class="view-title"><h1>📋 Mon plan</h1></div>
-    <p class="muted">Homme de 44 ans, 81,8 kg au départ, trois cours collectifs de crosstraining d'une heure par semaine. Objectif : un déficit d'environ <b>390 kcal par jour</b>.</p>
+    <div class="view-title"><h1>📋 Mon plan</h1><button class="btn small" id="pEdit">✏️ Modifier mon profil</button></div>
+    <p class="muted" id="pIntro"></p>
     <div class="tblwrap"><table class="ptable" id="pTable"></table></div>
 
     <section class="block">
       <h2>🗓️ Journées types</h2>
-      <p class="muted">Les pommes de terre et les légumes sont pesés cuits. Le riz, les flocons, le poulet et le saumon sont pesés avant cuisson. Les fruits sont pesés sans la peau ni le trognon.</p>
+      <p class="muted" id="pDaysNote"></p>
       <div class="days2" id="pDays"></div>
     </section>
 
@@ -109,7 +162,7 @@
       <h2>💡 Repères</h2>
       <div class="tips">
         <div class="tip"><span class="ic">📉</span><b>Suivre la tendance</b><p>Une baisse d'environ 300 à 450 g par semaine est un bon repère. On juge sur 2 à 3 semaines.</p></div>
-        <div class="tip"><span class="ic">🏋️</span><b>Autour du cours</b><p>Cours en fin de journée : collation 1 à 2 h avant, dîner après. Cours le matin : la banane de la collation peut être prise avant la séance.</p></div>
+        <div class="tip"><span class="ic">🏋️</span><b>Autour de la séance</b><p>Séance en fin de journée : collation 1 à 2 h avant, dîner après. Séance le matin : la banane de la collation peut être prise avant.</p></div>
         <div class="tip"><span class="ic">🔧</span><b>Ajuster</b><p>Baisse de plus de 500 g par semaine dans la durée : ajoute 100 à 150 kcal par jour. Poids stable après 3 semaines : vérifie les portions et l'activité, puis baisse les cibles d'environ 100 kcal.</p></div>
       </div>
     </section>
@@ -117,11 +170,11 @@
     <section class="block">
       <h2>🎯 Ajuster mes cibles</h2>
       <div class="card">
-        <p class="muted" style="margin:0">Le calcul de départ suppose 1,75 m et un quotidien plutôt sédentaire hors cours (Mifflin–St Jeor, facteur d'activité 1,35, environ 400 kcal par cours). Change les cibles ici si besoin.</p>
+        <p class="muted" style="margin:0" id="sNote"></p>
         <form id="sForm">
           <div class="settings-form">
             <label class="field">kcal sans sport<input type="number" id="s_kcal_rest" min="1000" max="5000" required></label>
-            <label class="field">kcal crosstraining<input type="number" id="s_kcal_sport" min="1000" max="5000" required></label>
+            <label class="field" id="sKcalSportLab">kcal sport<input type="number" id="s_kcal_sport" min="1000" max="5000" required></label>
             <label class="field">Protéines (g)<input type="number" id="s_protein" min="0" max="400" required></label>
             <label class="field">Glucides sans sport (g)<input type="number" id="s_carbs_rest" min="0" max="800" required></label>
             <label class="field">Glucides sport (g)<input type="number" id="s_carbs_sport" min="0" max="800" required></label>
@@ -214,9 +267,9 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
-<script src="config.js?v=5"></script>
-<script src="data.js?v=5"></script>
+<script src="config.js?v=6"></script>
+<script src="data.js?v=6"></script>
 <script src="ciqual.js?v=2"></script>
-<script src="app.js?v=5"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>
