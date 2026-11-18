@@ -52,12 +52,29 @@ function searchFoods(list, query, limit) {
     .flatMap(w => (SYN[w] || w).split(' ')).map(w => w.length > 3 ? w.replace(/[sx]$/, '') : w);
   if (!words.length) return list.slice(0, limit);
   const atWordStart = f => words.every(w => (' ' + f.k.replace(/[(),%]/g, ' ')).includes(' ' + w));
-  const rank = f => (atWordStart(f) ? 0 : 5000) + (f.custom ? 0 : f.ciqual ? 2 : 1) * 1000 + (f.k.startsWith(words[0]) ? 0 : 500) + Math.min(f.k.length, 400);
+  const rank = f => (atWordStart(f) ? 0 : 5000) + (f.custom || f.recipe ? 0 : f.ciqual ? 2 : 1) * 1000 + (f.k.startsWith(words[0]) ? 0 : 500) + Math.min(f.k.length, 400);
   return list.filter(f => words.every(w => f.k.includes(w))).sort((a, b) => rank(a) - rank(b)).slice(0, limit);
 }
-let FOODS = BASE.slice();
+/* Recettes (recipes.js) : valeurs pour 100 g calculées à partir des ingrédients */
+const RFOODS = [];
+if (typeof RECIPES !== 'undefined') RECIPES.forEach(r => {
+  const T = {K: 0, P: 0, G: 0, L: 0, w: 0};
+  r.items = r.ing.map(([ref, g, label]) => {
+    const [n, s] = ref.split('|');
+    const f = ref.includes('|') ? findBase(n, s) : BASE.find(x => x.ciqual && x.n === ref);
+    if (!f) { console.warn('Recette', r.id, ': aliment introuvable', ref); return null; }
+    T.K += f.K * g / 100; T.P += f.P * g / 100; T.G += f.G * g / 100; T.L += f.L * g / 100; T.w += g;
+    return {label, g};
+  }).filter(Boolean);
+  const per100 = x => Math.round(x / T.w * 1000) / 10;
+  r.portion = Math.round(T.w / r.parts / 5) * 5;
+  RFOODS.push({key: 'r' + r.id, n: r.n, s: '', K: per100(T.K), P: per100(T.P), G: per100(T.G), L: per100(T.L),
+    em: r.em, recipe: r, portion: r.portion, label: r.n, k: norm(r.n + ' recette')});
+});
+const recipeFood = id => RFOODS.find(f => f.recipe.id === id);
+let FOODS = RFOODS.concat(BASE);
 function rebuildFoods() {
-  FOODS = BASE.concat(state.custom.map(c => ({
+  FOODS = RFOODS.concat(BASE, state.custom.map(c => ({
     key: 'u' + c.id, n: c.name, s: '', P: +c.p100, G: +c.g100, L: +c.l100, K: +c.kcal100, em: '🏷️', custom: true, label: c.name
   })));
   FOODS.forEach(f => { if (!f.k) f.k = norm(f.label); });
@@ -256,13 +273,14 @@ function showError(e) {
 }
 
 /* ========== Navigation par onglets ========== */
-const TABS = ['plan', 'journal', 'bilan', 'poids', 'aliments'];
+const TABS = ['plan', 'journal', 'bilan', 'poids', 'recettes', 'aliments'];
 function route() {
   const t = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'plan';
   TABS.forEach(x => $('v-' + x).classList.toggle('hidden', x !== t));
   document.querySelectorAll('.tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === t));
   if (t === 'poids') renderWeights();
   if (t === 'bilan') renderBilan();
+  if (t === 'recettes') renderRecipes();
   window.scrollTo(0, 0);
 }
 window.addEventListener('hashchange', () => { if (started) route(); });
@@ -412,11 +430,12 @@ function openAdd(meal) {
 }
 function searchAdd() {
   const list = searchFoods(FOODS, $('addQ').value, 60);
-  $('addRes').innerHTML = list.length ? list.map(f => `<li data-key="${f.key}"${pick && pick.key === f.key ? ' class="sel"' : ''}><span>${f.em} ${esc(f.label)}${f.custom ? '<span class="cu">perso</span>' : ''}</span><small>${fr0(f.K)} kcal/100 g</small></li>`).join('') + (list.length === 60 ? '<li style="cursor:default"><span class="muted">… précise ta recherche pour voir plus de résultats</span></li>' : '')
+  $('addRes').innerHTML = list.length ? list.map(f => `<li data-key="${f.key}"${pick && pick.key === f.key ? ' class="sel"' : ''}><span>${f.em} ${esc(f.label)}${f.custom ? '<span class="cu">perso</span>' : f.recipe ? '<span class="cu rc">recette</span>' : ''}</span><small>${f.recipe ? fr0(f.K * f.portion / 100) + ' kcal/portion' : fr0(f.K) + ' kcal/100 g'}</small></li>`).join('') + (list.length === 60 ? '<li style="cursor:default"><span class="muted">… précise ta recherche pour voir plus de résultats</span></li>' : '')
     : '<li style="cursor:default"><span class="muted">Aucun résultat. Crée un aliment perso ⬇</span></li>';
 }
 /* Portions rapides selon le type d'aliment (boissons : 1 ml ≈ 1 g) */
 function portionsFor(f) {
+  if (f.recipe) return [['½ portion', Math.round(f.portion / 2)], ['1 portion', f.portion], ['1 portion ½', Math.round(f.portion * 1.5)], ['2 portions', f.portion * 2]];
   const k = f.k || norm(f.label);
   if (/^huile|huile d olive|^beurre(?! de cacah)/.test(k)) return [['1 c. à café', 4], ['1 c. à soupe', 10]];
   if (/^(vin |vin$|vin \(|champagne|kir|apéritif a base de vin|aperitif a base de vin)/.test(k)) return [['1 verre (12,5 cl)', 125], ['1 coupe (10 cl)', 100], ['1 bouteille', 750]];
@@ -442,7 +461,7 @@ function resBoxes(f, g) {
 const gramsOf = el => Math.max(0, Math.min(5000, parseFloat(String(el.value).replace(',', '.')) || 0));
 function updAddPrev() { if (pick) $('addPrev').innerHTML = resBoxes(pick, gramsOf($('addG'))); }
 $('addQ').addEventListener('input', searchAdd);
-$('addRes').addEventListener('click', e => { const li = e.target.closest('li[data-key]'); if (li) selectFood(FOODS.find(f => f.key === li.dataset.key)); });
+$('addRes').addEventListener('click', e => { const li = e.target.closest('li[data-key]'); if (li) { const f = FOODS.find(x => x.key === li.dataset.key); selectFood(f, f.recipe ? f.portion : 100); } });
 $('addG').addEventListener('input', updAddPrev);
 $('addPortions').addEventListener('click', e => { const b = e.target.closest('[data-g]'); if (b) { $('addG').value = b.dataset.g; updAddPrev(); } });
 $('addG').addEventListener('keydown', e => { if (e.key === 'Enter') $('addOk').click(); });
@@ -834,6 +853,53 @@ $('mAdd').addEventListener('click', async () => {
     await insertEntries([entryFromFood(cur, g, $('mMeal').value, state.date)]);
     renderJournal(); closeModals(); toast(`${cur.label} ajouté au journal ✔`);
   } catch (e) { fail(e); }
+});
+
+/* ========== RECETTES ========== */
+let rCat = 'all', curR = null, rParts = 1;
+const portionVals = f => { const r = f.portion / 100; return {K: f.K * r, P: f.P * r, G: f.G * r, L: f.L * r}; };
+function renderRecipes() {
+  const s = state.settings, meal = Math.round((s.kcal_rest || 1900) * 0.3 / 10) * 10;
+  $('rCats').innerHTML = [['all', 'Tout', '✨']].concat(RECIPE_CATS).map(([k, n, e]) =>
+    `<button class="btn small${rCat === k ? ' primary' : ' ghost'}" data-cat="${k}">${e} ${n}</button>`).join('');
+  $('rNote').innerHTML = `Valeurs <b>pour 1 portion</b>, calculées avec la table Ciqual. Repère : avec ton plan, un déjeuner ou un dîner tourne autour de <b>${fr0(meal)} kcal</b> un jour sans sport.`;
+  $('rList').innerHTML = RFOODS.filter(f => rCat === 'all' || f.recipe.cat === rCat).map(f => {
+    const v = portionVals(f), r = f.recipe;
+    return `<button class="rcard" data-r="${r.id}"><span class="rem">${r.em}</span><b>${esc(r.n)}</b>
+      <span class="rmeta">⏱️ ${r.min} min · ${r.parts} portion${r.parts > 1 ? 's' : ''}</span>
+      <span class="rmac"><i class="ck">${fr0(v.K)} kcal</i><i class="cp">${fr0(v.P)} g prot.</i></span></button>`;
+  }).join('');
+}
+$('rCats').addEventListener('click', e => { const b = e.target.closest('[data-cat]'); if (b) { rCat = b.dataset.cat; renderRecipes(); } });
+$('rList').addEventListener('click', e => { const b = e.target.closest('[data-r]'); if (b) openRecipe(b.dataset.r); });
+function openRecipe(id) {
+  curR = recipeFood(id); rParts = curR.recipe.parts;
+  const r = curR.recipe;
+  $('rEm').textContent = r.em; $('rName').textContent = r.n;
+  $('rMeta').textContent = `⏱️ ${r.min} min · environ ${curR.portion} g par portion`;
+  $('rRes').innerHTML = resBoxes(curR, curR.portion);
+  $('rSteps').innerHTML = r.steps.map(x => `<li>${esc(x)}</li>`).join('');
+  const gm = guessMeal();
+  $('rMeal').innerHTML = mealOptions(r.cat === 'pdj' ? (gm === 'col' ? 'col' : 'pdj') : (gm === 'dej' ? 'dej' : 'din'));
+  $('rQty').value = '1';
+  $('rAdd').textContent = state.date === today() ? 'Ajouter au journal' : `Ajouter (${shortDate(state.date)})`;
+  renderRecipeIng(); openModal('recipeModal');
+}
+function renderRecipeIng() {
+  const r = curR.recipe, k = rParts / r.parts;
+  $('rParts').textContent = rParts + ' portion' + (rParts > 1 ? 's' : '');
+  const q = g => { const x = g * k; return x >= 20 ? Math.round(x / 5) * 5 : Math.round(x * 2) / 2; };
+  $('rIng').innerHTML = r.items.map(i => `<li><b>${String(q(i.g)).replace('.', ',')} g</b> ${esc(i.label)}</li>`).join('');
+}
+$('rMinus').addEventListener('click', () => { if (rParts > 1) { rParts--; renderRecipeIng(); } });
+$('rPlus').addEventListener('click', () => { if (rParts < 12) { rParts++; renderRecipeIng(); } });
+$('rAdd').addEventListener('click', async () => {
+  const n = +$('rQty').value, g = Math.round(curR.portion * n);
+  $('rAdd').disabled = true;
+  try {
+    await insertEntries([entryFromFood(curR, g, $('rMeal').value, state.date)]);
+    renderJournal(); closeModals(); toast(`${curR.label} ajouté au journal ✔`);
+  } catch (e) { fail(e); } finally { $('rAdd').disabled = false; }
 });
 
 /* ========== Go ========== */

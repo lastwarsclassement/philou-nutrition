@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=9">
+<link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
 
@@ -89,6 +89,7 @@
         <a href="#journal" data-tab="journal"><span class="ic">🍽️</span>Journal</a>
         <a href="#bilan" data-tab="bilan"><span class="ic">📊</span>Bilan</a>
         <a href="#poids" data-tab="poids"><span class="ic">⚖️</span>Poids</a>
+        <a href="#recettes" data-tab="recettes"><span class="ic">🍲</span>Recettes</a>
         <a href="#aliments" data-tab="aliments"><span class="ic">🔎</span>Aliments</a>
       </nav>
       <div class="user"><span class="email muted" id="uName"></span><button class="btn small ghost" id="logout" title="Se déconnecter">Déconnexion</button></div>
@@ -192,6 +193,15 @@
     </section>
   </main>
 
+  <!-- RECETTES -->
+  <main class="view wrap hidden" id="v-recettes">
+    <div class="view-title"><h1>🍲 Recettes du quotidien</h1></div>
+    <p class="muted" id="rNote"></p>
+    <div class="rcats" id="rCats"></div>
+    <div class="rgrid" id="rList"></div>
+    <p class="muted" style="font-size:.85rem;margin-top:18px">Dans le journal, tape le nom d'une recette (« chili », « croque », « porridge »…) dans la recherche pour l'ajouter en une portion. Les plats tout faits (lasagnes, quiche du commerce…) sont aussi dans la recherche, avec les valeurs Ciqual.</p>
+  </main>
+
   <!-- ALIMENTS -->
   <main class="view wrap hidden" id="v-aliments">
     <div class="view-title"><h1>Protéines, glucides et lipides <span class="hl">pour 100 g</span></h1></div>
@@ -222,7 +232,7 @@
     <h3 id="addTitle">Ajouter un aliment</h3>
     <div id="addSearch">
       <label class="field">Repas<select id="addMeal"></select></label>
-      <div class="search" style="margin-top:12px;flex:auto"><span aria-hidden="true">🔍</span><input id="addQ" type="search" placeholder="Poulet, riz, pizza, croissant…" autocomplete="off" aria-label="Chercher un aliment"></div>
+      <div class="search" style="margin-top:12px;flex:auto"><span aria-hidden="true">🔍</span><input id="addQ" type="search" placeholder="Poulet, riz, chili, croque…" autocomplete="off" aria-label="Chercher un aliment"></div>
       <ul class="results" id="addRes"></ul>
       <div id="addPick" class="hidden">
         <p style="margin:14px 0 0;font-weight:800" id="addName"></p>
@@ -267,12 +277,34 @@
   </div>
 </div>
 
+<!-- Modal : recette -->
+<div class="modal" id="recipeModal" role="dialog" aria-modal="true" aria-labelledby="rName">
+  <div class="sheet">
+    <button class="close" data-close aria-label="Fermer">✕</button>
+    <div style="font-size:2.2rem" id="rEm"></div>
+    <h3 id="rName"></h3>
+    <p class="muted" style="margin:0" id="rMeta"></p>
+    <p style="margin:12px 0 0;font-weight:800">Pour 1 portion</p>
+    <div class="res" id="rRes" style="margin-top:6px"></div>
+    <div class="rhead"><b>Ingrédients</b><span class="stepper"><button class="btn small ghost" id="rMinus" aria-label="Une portion de moins">−</button><span id="rParts"></span><button class="btn small ghost" id="rPlus" aria-label="Une portion de plus">+</button></span></div>
+    <ul class="ring" id="rIng"></ul>
+    <b style="display:block;margin-top:14px">Préparation</b>
+    <ol class="rsteps" id="rSteps"></ol>
+    <div class="addrow">
+      <label class="field">Repas<select id="rMeal"></select></label>
+      <label class="field">Quantité<select id="rQty"><option value="0.5">½ portion</option><option value="1" selected>1 portion</option><option value="1.5">1 portion ½</option><option value="2">2 portions</option></select></label>
+      <button class="btn primary" id="rAdd">Ajouter au journal</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
-<script src="config.js?v=9"></script>
-<script src="data.js?v=9"></script>
+<script src="config.js?v=10"></script>
+<script src="data.js?v=10"></script>
 <script src="ciqual.js?v=2"></script>
-<script src="app.js?v=9"></script>
+<script src="recipes.js?v=1"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
