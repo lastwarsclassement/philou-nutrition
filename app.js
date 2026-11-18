@@ -104,7 +104,7 @@ function boot() {
 function authMsg(t, ok = false) { const m = $('aMsg'); m.textContent = t; m.className = 'msg ' + (ok ? 'ok' : 'err'); }
 const frAuthErr = e => {
   const m = (e && e.message) || String(e);
-  if (/invalid login/i.test(m)) return 'E-mail ou mot de passe incorrect.';
+  if (/invalid login/i.test(m)) return 'E-mail ou mot de passe incorrect. Vérifie avec « 👁️ Afficher » : majuscules, espaces, faute de frappe dans l’adresse.';
   if (/not confirmed/i.test(m)) return 'Ce compte n’est pas encore confirmé.';
   if (/already registered/i.test(m)) return 'Un compte existe déjà avec cet e-mail : clique sur « Se connecter ».';
   if (/at least 6|password should/i.test(m)) return 'Le mot de passe doit faire au moins 6 caractères.';
