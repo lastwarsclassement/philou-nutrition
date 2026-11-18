@@ -277,3 +277,6 @@ footer{border-top:var(--border);padding:28px 0 40px;font-size:.88rem;color:var(-
 /* TABLE CIQUAL COMPLÈTE */
 .ciq-tools{margin:0 0 12px}
 .ciq-tools select{border:var(--border);border-radius:14px;padding:8px 12px;background:#fff;font-weight:700;width:100%;max-width:420px}
+
+.portions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.portions:empty{display:none}

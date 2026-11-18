@@ -123,9 +123,9 @@ async function start() {
 }
 
 /* ========== Navigation par onglets ========== */
-const TABS = ['journal', 'bilan', 'poids', 'plan', 'aliments'];
+const TABS = ['plan', 'journal', 'bilan', 'poids', 'aliments'];
 function route() {
-  const t = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'journal';
+  const t = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'plan';
   TABS.forEach(x => $('v-' + x).classList.toggle('hidden', x !== t));
   document.querySelectorAll('.tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === t));
   if (t === 'poids') renderWeights();
@@ -269,9 +269,23 @@ function searchAdd() {
   $('addRes').innerHTML = list.length ? list.map(f => `<li data-key="${f.key}"${pick && pick.key === f.key ? ' class="sel"' : ''}><span>${f.em} ${esc(f.label)}${f.custom ? '<span class="cu">perso</span>' : ''}</span><small>${fr0(f.K)} kcal/100 g</small></li>`).join('') + (list.length === 60 ? '<li style="cursor:default"><span class="muted">… précise ta recherche pour voir plus de résultats</span></li>' : '')
     : '<li style="cursor:default"><span class="muted">Aucun résultat. Crée un aliment perso ⬇</span></li>';
 }
+/* Portions rapides selon le type d'aliment (boissons : 1 ml ≈ 1 g) */
+function portionsFor(f) {
+  const k = f.k || norm(f.label);
+  if (/^huile|huile d olive|^beurre(?! de cacah)/.test(k)) return [['1 c. à café', 4], ['1 c. à soupe', 10]];
+  if (/^(vin |vin$|vin \(|champagne|kir|apéritif a base de vin|aperitif a base de vin)/.test(k)) return [['1 verre (12,5 cl)', 125], ['1 coupe (10 cl)', 100], ['1 bouteille', 750]];
+  if (/^(biere|cidre|panache)/.test(k)) return [['1 demi (25 cl)', 250], ['1 canette (33 cl)', 330], ['1 pinte (50 cl)', 500]];
+  if (/^(whisky|vodka|rhum|gin$|gin,|tequila|pastis$|pastis,|liqueur|eau de vie|cocktail|porto)/.test(k)) return [['1 dose (4 cl)', 40], ['1 verre (10 cl)', 100]];
+  if (/^(cola|soda|jus |limonade|boisson|nectar|sirop)/.test(k)) return [['1 verre (20 cl)', 200], ['1 canette (33 cl)', 330]];
+  if (/^(sucre|miel|confiture|pate a tartiner)/.test(k)) return [['1 c. à café', 7], ['1 c. à soupe', 20]];
+  if (/^(oeuf|œuf)/.test(k)) return [['1 œuf', 55], ['2 œufs', 110]];
+  return [];
+}
 function selectFood(f, grams = 100) {
   pick = f; $('addPick').classList.remove('hidden'); $('addName').textContent = f.em + ' ' + f.label;
   $('addG').value = grams; updAddPrev(); searchAdd();
+  const pp = portionsFor(f);
+  $('addPortions').innerHTML = pp.map(([t, g]) => `<button type="button" class="btn small ghost" data-g="${g}">${t}</button>`).join('');
   setTimeout(() => { $('addG').focus(); $('addG').select(); }, 30);
 }
 function resBoxes(f, g) {
@@ -284,6 +298,7 @@ function updAddPrev() { if (pick) $('addPrev').innerHTML = resBoxes(pick, gramsO
 $('addQ').addEventListener('input', searchAdd);
 $('addRes').addEventListener('click', e => { const li = e.target.closest('li[data-key]'); if (li) selectFood(FOODS.find(f => f.key === li.dataset.key)); });
 $('addG').addEventListener('input', updAddPrev);
+$('addPortions').addEventListener('click', e => { const b = e.target.closest('[data-g]'); if (b) { $('addG').value = b.dataset.g; updAddPrev(); } });
 $('addG').addEventListener('keydown', e => { if (e.key === 'Enter') $('addOk').click(); });
 $('addOk').addEventListener('click', async () => {
   const g = gramsOf($('addG')); if (!pick || !g) return;

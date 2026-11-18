@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 
@@ -31,17 +31,17 @@
     <div class="row">
       <div class="brand">🥦 <span class="t">Plan déficit</span></div>
       <nav class="tabs" aria-label="Navigation">
+        <a href="#plan" data-tab="plan"><span class="ic">📋</span>Mon plan</a>
         <a href="#journal" data-tab="journal"><span class="ic">🍽️</span>Journal</a>
         <a href="#bilan" data-tab="bilan"><span class="ic">📊</span>Bilan</a>
         <a href="#poids" data-tab="poids"><span class="ic">⚖️</span>Poids</a>
-        <a href="#plan" data-tab="plan"><span class="ic">📋</span>Mon plan</a>
         <a href="#aliments" data-tab="aliments"><span class="ic">🔎</span>Aliments</a>
       </nav>
           </div>
   </header>
 
   <!-- JOURNAL -->
-  <main class="view wrap" id="v-journal">
+  <main class="view wrap hidden" id="v-journal">
     <div class="daybar">
       <button class="iconbtn" id="dPrev" aria-label="Jour précédent">◀</button>
       <label class="dl" id="dLabel" title="Choisir une date"></label>
@@ -94,7 +94,7 @@
   </main>
 
   <!-- PLAN -->
-  <main class="view wrap hidden" id="v-plan">
+  <main class="view wrap" id="v-plan">
     <div class="view-title"><h1>📋 Mon plan</h1></div>
     <p class="muted">Homme de 44 ans, 81,8 kg au départ, trois cours collectifs de crosstraining d'une heure par semaine. Objectif : un déficit d'environ <b>390 kcal par jour</b>.</p>
     <div class="tblwrap"><table class="ptable" id="pTable"></table></div>
@@ -170,6 +170,7 @@
       <ul class="results" id="addRes"></ul>
       <div id="addPick" class="hidden">
         <p style="margin:14px 0 0;font-weight:800" id="addName"></p>
+        <div class="portions" id="addPortions"></div>
         <div class="grams"><input type="number" id="addG" min="0" max="5000" inputmode="decimal" aria-label="Poids en grammes"><b>g</b></div>
         <div class="res" id="addPrev"></div>
         <button class="btn primary" id="addOk" style="width:100%;margin-top:16px">Ajouter</button>
@@ -213,9 +214,9 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
-<script src="config.js?v=4"></script>
-<script src="data.js?v=4"></script>
-<script src="ciqual.js?v=1"></script>
-<script src="app.js?v=4"></script>
+<script src="config.js?v=5"></script>
+<script src="data.js?v=5"></script>
+<script src="ciqual.js?v=2"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>
