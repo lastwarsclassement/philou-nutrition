@@ -744,6 +744,18 @@ function renderPlan() {
     <tr><td>Protéines</td><td>${s.protein} g</td><td>${s.protein} g</td></tr>
     <tr><td>Glucides</td><td>${s.carbs_rest} g</td><td>${s.carbs_sport} g</td></tr>
     <tr><td>Lipides</td><td>${s.fat} g</td><td>${s.fat} g</td></tr></tbody>`;
+  // Détail du calcul des jours de sport selon le nombre de séances
+  const base = s.kcal_sport - s.kcal_rest, perDay = n > 7 ? n / 7 : 1, frx = x => fr(x, Number.isInteger(x) ? 0 : 1);
+  const week = (7 - nd) * s.kcal_rest + nd * s.kcal_sport;
+  $('pCalc').innerHTML = `<h3>🧮 Calcul des calories avec ${n} séance${n > 1 ? 's' : ''} par semaine</h3>
+    <ol class="calcl">
+      <li><b>${n} séance${n > 1 ? 's' : ''} d'environ 1 h par semaine</b> → ${nd} jour${nd > 1 ? 's' : ''} de sport et ${7 - nd} jour${7 - nd > 1 ? 's' : ''} sans sport${n > 7 ? `, soit ${frx(perDay)} séances en moyenne par jour de sport (${n} ÷ 7)` : ''}.</li>
+      <li><b>Une séance de 1 h ≈ ${KCAL_SESSION} kcal</b> dépensées${n > 7 ? `, donc ${frx(perDay)} × ${KCAL_SESSION} ≈ <b>${fr0(M.sport - M.repos)} kcal</b> par jour de sport` : ''}.</li>
+      <li>Dépense d'un jour de sport : ${fr0(M.repos)} + ${fr0(M.sport - M.repos)} = <b>${fr0(M.sport)} kcal</b>.</li>
+      <li>Cible d'un jour de sport : ${fr0(s.kcal_rest)} + ${fr0(base)} = <b>${fr0(s.kcal_sport)} kcal</b>${base !== M.sport - M.repos && !isPhilou() ? ' (cible arrondie aux 50 kcal)' : ''}${base > 0 ? ` (les ${fr0(base)} kcal en plus sont des glucides : ${s.carbs_rest} → ${s.carbs_sport} g)` : ''}.</li>
+      <li>Sur la semaine : ${7 - nd} × ${fr0(s.kcal_rest)} + ${nd} × ${fr0(s.kcal_sport)} = <b>${fr0(week)} kcal</b>, soit <b>${fr0(week / 7)} kcal par jour</b> en moyenne.</li>
+    </ol>
+    <p class="muted" style="margin:8px 0 0;font-size:.9rem">📝 Dans le journal, un jour de sport compte <b>+${fr0(base)} kcal</b> par défaut. Si tu saisis tes séances (sport et durée, ou kcal de ta montre), leurs kcal remplacent cette valeur de base.</p>`;
   $('pDaysNote').textContent = (isPhilou() ? '' : 'Portions de la journée type de référence, ajustées à ta cible. ') + 'Les pommes de terre et les légumes sont pesés cuits. Le riz, les flocons, le poulet et le saumon sont pesés avant cuisson. Les fruits sont pesés sans la peau ni le trognon.';
   $('pDays').innerHTML = [['repos', '🛋️ Jour sans sport'], ['sport', '🏋️ Jour ' + sp.toLowerCase()]].map(([type, title]) => {
     const all = templateEntries(type), tot = sumVals(all);
@@ -951,8 +963,8 @@ function renderActs() {
     return `<li><span>${sp.em} <b>${esc(a.label || sp.n)}</b> · ${a.min} min</span><span class="ak">${fr0(a.kcal)} kcal${a.manual ? ' <small>(saisi)</small>' : ''}</span><button class="del" data-i="${i}" aria-label="Supprimer la séance">✕</button></li>`;
   }).join('') : '';
   $('actNote').innerHTML = state.acts.length
-    ? `Dépense des séances : <b>${fr0(t.ex)} kcal</b> → cible du jour <b>${fr0(state.settings.kcal_rest)} + ${fr0(t.ex)} = ${fr0(t.K)} kcal</b> (le surplus va aux glucides).`
-    : `Ajoute ta séance pour ajuster la cible. Sans séance saisie, la cible est celle d'une séance d'environ 1 h (<b>${fr0(state.settings.kcal_sport)} kcal</b>).`;
+    ? `Dépense des séances : <b>${fr0(t.ex)} kcal</b> → cible du jour <b>${fr0(state.settings.kcal_rest)} + ${fr0(t.ex)} = ${fr0(t.K)} kcal</b> (le surplus va aux glucides). Ça remplace la valeur de base de +${fr0(state.settings.kcal_sport - state.settings.kcal_rest)} kcal.`
+    : `<b>Valeur de base si aucune séance n'est saisie : +${fr0(state.settings.kcal_sport - state.settings.kcal_rest)} kcal</b> (séance type de ton plan) → cible du jour ${fr0(state.settings.kcal_rest)} + ${fr0(state.settings.kcal_sport - state.settings.kcal_rest)} = <b>${fr0(state.settings.kcal_sport)} kcal</b>. Ajoute ta séance pour un calcul plus précis.`;
   updActPrev();
 }
 function updActPrev() {

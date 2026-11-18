@@ -351,3 +351,9 @@ footer{border-top:var(--border);padding:28px 0 40px;font-size:.88rem;color:var(-
 .actform{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end;margin-top:8px}
 .aprev{margin:8px 0 0;font-weight:800;font-size:.92rem}
 @media (max-width:560px){.actform{grid-template-columns:1fr 1fr}.actform .asport{grid-column:1/-1}.actform .btn{grid-column:1/-1}}
+
+/* DÉTAIL DU CALCUL */
+.calc{margin-top:16px;padding:16px 18px}
+.calc h3{margin:0 0 8px}
+.calcl{margin:0;padding-left:22px}
+.calcl li{margin:5px 0}
