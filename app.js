@@ -81,12 +81,21 @@ function rebuildFoods() {
 }
 
 /* ========== État ========== */
-const state = {user: null, settings: {...DEFAULT_SETTINGS}, date: today(), dayType: 'repos', entries: [], weights: [], custom: []};
+const state = {user: null, settings: {...DEFAULT_SETTINGS}, date: today(), dayType: 'repos', acts: [], entries: [], weights: [], custom: []};
 let sb = null;
 
+/* Cible d'un jour : jour de sport avec séances saisies = cible sans sport + dépense des séances (le surplus va aux glucides).
+   Sans séance saisie : cible « sport » du plan (séance d'environ 1 h). */
+const actsKcal = acts => (acts || []).reduce((a, x) => a + (+x.kcal || 0), 0);
+function dayTarget(s, type, acts) {
+  const ex = actsKcal(acts), maintR = s.maint_rest || 2290, maintS = s.maint_sport || 2690;
+  if (type !== 'sport') return {K: s.kcal_rest, G: s.carbs_rest, M: maintR, ex: 0};
+  if (!ex) return {K: s.kcal_sport, G: s.carbs_sport, M: maintS, ex: 0, dflt: true};
+  return {K: s.kcal_rest + ex, G: (s.carbs_rest || 0) + Math.round(ex / 4), M: maintR + ex, ex};
+}
 const target = () => {
-  const s = state.settings, sport = state.dayType === 'sport';
-  return {K: sport ? s.kcal_sport : s.kcal_rest, P: s.protein, G: sport ? s.carbs_sport : s.carbs_rest, L: s.fat};
+  const s = state.settings, t = dayTarget(s, state.dayType, state.acts);
+  return {K: t.K, P: s.protein, G: t.G, L: s.fat};
 };
 const entryVals = e => { const r = e.grams / 100; return {K: e.kcal100 * r, P: e.p100 * r, G: e.g100 * r, L: e.l100 * r}; };
 const sumVals = list => list.reduce((a, e) => { const v = entryVals(e); a.K += v.K; a.P += v.P; a.G += v.G; a.L += v.L; return a; }, {K: 0, P: 0, G: 0, L: 0});
@@ -299,12 +308,13 @@ async function loadDay() {
   $('meals').innerHTML = '<p class="muted" style="text-align:center;margin-top:24px"><span class="spinner"></span></p>';
   try {
     const [dy, en] = await Promise.all([
-      sb.from('days').select('day_type').eq('date', d).maybeSingle(),
+      sb.from('days').select('day_type,activities').eq('date', d).maybeSingle(),
       sb.from('entries').select('*').eq('date', d).order('created_at')
     ]);
     if (dy.error) throw dy.error; if (en.error) throw en.error;
     if (d !== state.date) return; // l'utilisateur a changé de jour entre-temps
     state.dayType = dy.data ? dy.data.day_type : 'repos';
+    state.acts = dy.data && Array.isArray(dy.data.activities) ? dy.data.activities : [];
     state.entries = en.data.map(e => ({...e, grams: +e.grams, p100: +e.p100, g100: +e.g100, l100: +e.l100, kcal100: +e.kcal100}));
     renderJournal();
   } catch (e) { fail(e); }
@@ -321,7 +331,8 @@ function renderJournal() {
   renderQuickWeigh();
   const s = state.settings;
   $('tRest').textContent = fr0(s.kcal_rest) + ' kcal';
-  $('tSport').textContent = fr0(s.kcal_sport) + ' kcal';
+  $('tSport').textContent = fr0(state.dayType === 'sport' ? target().K : s.kcal_sport) + ' kcal';
+  renderActs();
   $('tSportName').textContent = sportName();
   document.querySelectorAll('#dType button').forEach(b => b.classList.toggle('on', b.dataset.t === state.dayType));
   renderSummary();
@@ -392,7 +403,7 @@ $('dLabel').addEventListener('change', e => { if (e.target.id === 'dPick' && e.t
 $('dType').addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b || b.dataset.t === state.dayType) return;
   const prev = state.dayType; state.dayType = b.dataset.t; renderJournal();
-  const {error} = await sb.from('days').upsert({user_id: state.user.id, date: state.date, day_type: state.dayType});
+  const {error} = await sb.from('days').upsert({user_id: state.user.id, date: state.date, day_type: state.dayType, activities: state.acts});
   if (error) { state.dayType = prev; renderJournal(); fail(error); }
 });
 
@@ -612,7 +623,7 @@ async function renderBilan() {
   try {
     [en, dy] = await Promise.all([
       sb.from('entries').select('date,grams,p100,g100,l100,kcal100').gte('date', mon).lte('date', sun),
-      sb.from('days').select('date,day_type').gte('date', mon).lte('date', sun)
+      sb.from('days').select('date,day_type,activities').gte('date', mon).lte('date', sun)
     ]);
     if (en.error) throw en.error; if (dy.error) throw dy.error;
   } catch (e) { $('bBody').innerHTML = ''; return fail(e); }
@@ -620,18 +631,19 @@ async function renderBilan() {
 
   const s = state.settings;
   const rows = days7.map(d => {
-    const type = (dy.data.find(x => x.date === d) || {}).day_type || 'repos';
+    const drow = dy.data.find(x => x.date === d) || {}, type = drow.day_type || 'repos';
+    const dt0 = dayTarget(s, type, drow.activities);
     const list = en.data.filter(e => e.date === d).map(e => ({grams: +e.grams, p100: +e.p100, g100: +e.g100, l100: +e.l100, kcal100: +e.kcal100}));
     const v = sumVals(list);
-    const tgt = type === 'sport' ? s.kcal_sport : s.kcal_rest;
-    return {d, type, logged: list.length > 0, v, tgt, future: d > t};
+    const tgt = dt0.K;
+    return {d, type, logged: list.length > 0, v, tgt, maint: dt0.M, future: d > t};
   });
   const logged = rows.filter(r => r.logged);
   const n = logged.length;
   const avg = k => n ? logged.reduce((a, r) => a + r.v[k], 0) / n : 0;
   const onTarget = logged.filter(r => Math.abs(r.v.K - r.tgt) <= r.tgt * 0.1).length;
   const sportDays = rows.filter(r => r.type === 'sport').length;
-  const M = maint(), deficit = logged.reduce((a, r) => a + (M[r.type] - r.v.K), 0);
+  const deficit = logged.reduce((a, r) => a + (r.maint - r.v.K), 0);
   const vsTarget = logged.reduce((a, r) => a + (r.v.K - r.tgt), 0);
 
   // Poids de la semaine
@@ -909,6 +921,71 @@ $('rAdd').addEventListener('click', async () => {
   } catch (e) { fail(e); } finally { $('rAdd').disabled = false; }
 });
 
+/* ========== SÉANCES DE SPORT ========== */
+/* MET moyens (Compendium des activités physiques, adultes, 2024), arrondis.
+   Dépense nette = (MET − 1) × poids (kg) × durée (h) : on retire ce que le corps aurait dépensé au repos.
+   Crosstraining en cours collectif : 6 (échauffement, technique et pauses compris), soit ≈ 400 kcal/h pour 82 kg comme dans le PDF. */
+const SPORTS = [
+  ['cross', 'Crosstraining (cours collectif)', '🏋️', 6], ['wod', 'CrossFit / WOD intense', '🔥', 8],
+  ['hyrox', 'Hyrox (entraînement)', '🛷', 8.5], ['hyroxrace', 'Hyrox (course ou simulation)', '🏁', 10],
+  ['muscu', 'Musculation', '💪', 5],
+  ['footing', 'Course : footing / endurance', '🏃', 8.5], ['seuil', 'Course : seuil / tempo', '🏃', 10.5],
+  ['vma', 'Course : fractionné / VMA (récup comprise)', '⚡', 11], ['trail', 'Trail', '⛰️', 9.5],
+  ['velo', 'Vélo sur route (modéré)', '🚴', 7.5], ['spinning', 'Vélo d’appartement / RPM', '🚲', 8],
+  ['rameur', 'Rameur', '🚣', 7], ['natation', 'Natation', '🏊', 7], ['elliptique', 'Elliptique', '🌀', 5],
+  ['marche', 'Marche rapide', '🚶', 4.3], ['rando', 'Randonnée', '🥾', 6],
+  ['collectif', 'Sport collectif (foot, basket, hand…)', '⚽', 7.5], ['raquette', 'Tennis / padel / badminton', '🎾', 6.5],
+  ['combat', 'Boxe / sports de combat', '🥊', 8], ['yoga', 'Yoga / Pilates / mobilité', '🧘', 3],
+  ['autre', 'Autre sport (kcal à saisir)', '✍️', 0]
+];
+const SPORT = Object.fromEntries(SPORTS.map(([k, n, em, met]) => [k, {n, em, met}]));
+const curKg = () => { const w = state.weights; return w.length ? w[w.length - 1].kg : (+state.settings.weight_start || 75); };
+const estKcal = (k, min) => { const m = (SPORT[k] || {}).met; return m ? Math.round((m - 1) * curKg() * min / 60 / 10) * 10 : 0; };
+function renderActs() {
+  const box = $('acts');
+  if (state.dayType !== 'sport') { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  const t = dayTarget(state.settings, 'sport', state.acts);
+  $('actList').innerHTML = state.acts.length ? state.acts.map((a, i) => {
+    const sp = SPORT[a.s] || SPORT.autre;
+    return `<li><span>${sp.em} <b>${esc(a.label || sp.n)}</b> · ${a.min} min</span><span class="ak">${fr0(a.kcal)} kcal${a.manual ? ' <small>(saisi)</small>' : ''}</span><button class="del" data-i="${i}" aria-label="Supprimer la séance">✕</button></li>`;
+  }).join('') : '';
+  $('actNote').innerHTML = state.acts.length
+    ? `Dépense des séances : <b>${fr0(t.ex)} kcal</b> → cible du jour <b>${fr0(state.settings.kcal_rest)} + ${fr0(t.ex)} = ${fr0(t.K)} kcal</b> (le surplus va aux glucides).`
+    : `Ajoute ta séance pour ajuster la cible. Sans séance saisie, la cible est celle d'une séance d'environ 1 h (<b>${fr0(state.settings.kcal_sport)} kcal</b>).`;
+  updActPrev();
+}
+function updActPrev() {
+  const k = $('aSport').value, min = Math.max(0, Math.min(600, +$('aMin').value || 0)), man = $('aKcal').value.trim();
+  const isOther = k === 'autre';
+  $('aKcal').required = isOther;
+  $('aKcal').placeholder = isOther ? 'obligatoire' : String(estKcal(k, min));
+  $('aPrev').textContent = man !== '' ? `${fr0(+man.replace(',', '.') || 0)} kcal (saisi à la main)` : isOther ? 'Saisis les kcal (ex. celles de ta montre)' : `≈ ${fr0(estKcal(k, min))} kcal estimées pour ${fr(curKg())} kg`;
+}
+async function saveActs(prev) {
+  const {error} = await sb.from('days').upsert({user_id: state.user.id, date: state.date, day_type: state.dayType, activities: state.acts});
+  if (error) { state.acts = prev; renderJournal(); fail(error); return false; }
+  renderJournal(); return true;
+}
+['aSport', 'aMin', 'aKcal'].forEach(id => $(id).addEventListener('input', updActPrev));
+$('actForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const k = $('aSport').value, min = Math.max(1, Math.min(600, Math.round(+$('aMin').value || 0)));
+  const man = $('aKcal').value.trim(), manual = man !== '';
+  const kcal = manual ? Math.max(0, Math.min(5000, Math.round(+man.replace(',', '.') || 0))) : estKcal(k, min);
+  if (!kcal) return toast('Indique les kcal de la séance', true);
+  const prev = state.acts.slice();
+  state.acts = state.acts.concat([{s: k, min, kcal, manual}]);
+  if (await saveActs(prev)) { $('aKcal').value = ''; updActPrev(); toast('Séance ajoutée ✔'); }
+});
+$('actList').addEventListener('click', async e => {
+  const b = e.target.closest('.del'); if (!b) return;
+  const prev = state.acts.slice();
+  state.acts = state.acts.filter((_, i) => i !== +b.dataset.i);
+  await saveActs(prev);
+});
+$('aSport').innerHTML = SPORTS.map(([k, n, em]) => `<option value="${k}">${em} ${n}</option>`).join('');
+
 /* ========== ADMIN (lecture seule) ========== */
 let ADM = [], admSel = null;
 const dt = s => s ? new Date(s).toLocaleDateString('fr-FR', {day: 'numeric', month: 'short'}) : '—';
@@ -918,11 +995,12 @@ function admStats(u) {
   const t = today(), from7 = addDays(t, -6);
   const D = u.days || [], d7 = D.filter(x => x.date >= from7 && x.date <= t);
   const types = Object.fromEntries((u.types || []).map(x => [x.date, x.t]));
-  const tgt = x => types[x.date] === 'sport' ? u.kcal_sport : u.kcal_rest;
+  const acts = Object.fromEntries((u.types || []).map(x => [x.date, x.a]));
+  const tgt = x => dayTarget(u, types[x.date], acts[x.date]).K;
   const last = W.length ? W[W.length - 1] : null;
   const a7 = end => { const l = W.filter(x => x.date <= end && x.date >= addDays(end, -6)); return l.length ? mean(l.map(x => x.kg)) : null; };
   const avgNow = last ? a7(last.date) : null, avgPrev = last ? a7(addDays(last.date, -7)) : null;
-  return {W, D, d7, last, tgt, types,
+  return {W, D, d7, last, tgt, types, acts,
     start: u.weight_start != null ? +u.weight_start : (W[0] ? W[0].kg : null),
     trend: avgNow != null && avgPrev != null ? avgNow - avgPrev : null,
     kAvg: d7.length ? mean(d7.map(x => +x.k)) : null, tAvg: d7.length ? mean(d7.map(tgt)) : null,
@@ -957,8 +1035,9 @@ function renderAdminDetail() {
   const rows = [];
   for (let i = 0; i < 14; i++) {
     const day = addDays(t, -i), e = s.D.find(x => x.date === day), w = s.W.find(x => x.date === day);
-    const tg = s.types[day] === 'sport' ? u.kcal_sport : u.kcal_rest;
-    rows.push(`<tr><td>${cap(parseIso(day).toLocaleDateString('fr-FR', {weekday: 'short', day: 'numeric', month: 'short'}))}${s.types[day] === 'sport' ? ' 🏋️' : ''}</td>
+    const tg = dayTarget(u, s.types[day], s.acts[day]).K;
+    const al = (s.acts[day] || []).map(a => (SPORT[a.s] || SPORT.autre).em + ' ' + a.min + ' min').join(', ');
+    rows.push(`<tr><td>${cap(parseIso(day).toLocaleDateString('fr-FR', {weekday: 'short', day: 'numeric', month: 'short'}))}${s.types[day] === 'sport' ? (al ? `<br><small class="muted">${esc(al)}</small>` : ' 🏋️') : ''}</td>
       <td>${e ? `<b class="${+e.k > tg * 1.05 ? 'bad' : ''}">${fr0(e.k)}</b>` : '<span class="muted">—</span>'} <small class="muted">/ ${fr0(tg)}</small></td>
       <td>${e ? fr0(e.p) + ' g' : '—'} <small class="muted">/ ${u.protein} g</small></td><td>${w ? fr(w.kg) + ' kg' : ''}</td></tr>`);
   }

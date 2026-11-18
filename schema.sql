@@ -49,6 +49,9 @@ create table if not exists public.entries (
 );
 create index if not exists entries_user_date on public.entries (user_id, date);
 
+-- séances du jour : [{s: sport, min: durée, kcal, manual}]
+alter table public.days add column if not exists activities jsonb not null default '[]'::jsonb;
+
 create table if not exists public.weights (
   user_id uuid not null default auth.uid(),
   date    date not null,
@@ -114,13 +117,13 @@ begin
   end if;
   return (select coalesce(json_agg(row_to_json(x) order by x.created_at), '[]'::json) from (
     select u.id, u.email, u.created_at, u.last_sign_in_at,
-           s.first_name, s.plan, s.sex, s.age, s.weight_start, s.kcal_rest, s.kcal_sport, s.protein, s.pregnant,
+           s.first_name, s.plan, s.sex, s.age, s.weight_start, s.kcal_rest, s.kcal_sport, s.carbs_rest, s.carbs_sport, s.maint_rest, s.maint_sport, s.protein, s.pregnant,
            (select coalesce(json_agg(json_build_object('date', w.date, 'kg', w.kg) order by w.date), '[]'::json)
               from public.weights w where w.user_id = u.id) as weights,
            (select coalesce(json_agg(json_build_object('date', e.date, 'k', e.k, 'p', e.p) order by e.date), '[]'::json)
               from (select date, round(sum(grams * kcal100 / 100)) as k, round(sum(grams * p100 / 100)) as p
                       from public.entries where user_id = u.id and date >= current_date - 27 group by date) e) as days,
-           (select coalesce(json_agg(json_build_object('date', d.date, 't', d.day_type)), '[]'::json)
+           (select coalesce(json_agg(json_build_object('date', d.date, 't', d.day_type, 'a', d.activities)), '[]'::json)
               from public.days d where d.user_id = u.id and d.date >= current_date - 27) as types
       from auth.users u left join public.settings s on s.user_id = u.id
   ) x);

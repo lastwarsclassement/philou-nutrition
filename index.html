@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=12">
+<link rel="stylesheet" href="style.css?v=13">
 </head>
 <body>
 
@@ -106,6 +106,18 @@
     <div class="seg" id="dType">
       <button data-t="repos">🛋️ Sans sport<small id="tRest"></small></button>
       <button data-t="sport">🏋️ <span id="tSportName">Sport</span><small id="tSport"></small></button>
+    </div>
+    <div class="card acts hidden" id="acts">
+      <h3 style="margin:0 0 6px">🏅 Séances du jour</h3>
+      <ul class="actlist" id="actList"></ul>
+      <form class="actform" id="actForm">
+        <label class="field asport">Sport<select id="aSport"></select></label>
+        <label class="field">Durée (min)<input type="number" id="aMin" min="1" max="600" value="60" inputmode="numeric" required></label>
+        <label class="field">kcal (facultatif)<input type="text" id="aKcal" inputmode="numeric" pattern="[0-9]{1,4}" placeholder="auto"></label>
+        <button class="btn primary" type="submit">Ajouter</button>
+      </form>
+      <p class="aprev" id="aPrev"></p>
+      <p class="muted" style="margin:6px 0 0;font-size:.88rem" id="actNote"></p>
     </div>
     <form class="qweigh" id="qW">
       <span class="ic">⚖️</span><span class="lab" id="qWLabel">Pesée du matin</span>
@@ -313,6 +325,6 @@
 <script src="data.js?v=12"></script>
 <script src="ciqual.js?v=2"></script>
 <script src="recipes.js?v=1"></script>
-<script src="app.js?v=13"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>

@@ -337,3 +337,17 @@ footer{border-top:var(--border);padding:28px 0 40px;font-size:.88rem;color:var(-
 .ptable td.good,.ptable b.good{color:#13856f;font-weight:800} .ptable td.bad,.ptable b.bad{color:#d64533;font-weight:800}
 #v-admin .tbl{overflow-x:auto;background:#fff;border:var(--border);border-radius:16px}
 #v-admin .atable{min-width:640px}
+
+/* SÉANCES */
+.acts{margin-bottom:16px;padding:16px}
+.actlist{list-style:none;margin:0;padding:0}
+.actlist:empty{display:none}
+.actlist li{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1.5px solid var(--line)}
+.actlist li:first-child{border-top:0}
+.actlist li span:first-child{flex:1}
+.actlist .ak{font-weight:800;white-space:nowrap}
+.actlist .ak small{color:var(--muted);font-weight:700}
+.actlist .del{border:0;background:none;font-size:1rem;cursor:pointer;color:var(--muted)}
+.actform{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end;margin-top:8px}
+.aprev{margin:8px 0 0;font-weight:800;font-size:.92rem}
+@media (max-width:560px){.actform{grid-template-columns:1fr 1fr}.actform .asport{grid-column:1/-1}.actform .btn{grid-column:1/-1}}
