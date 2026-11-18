@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=2">
+<link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 
@@ -32,6 +32,7 @@
       <div class="brand">🥦 <span class="t">Plan déficit</span></div>
       <nav class="tabs" aria-label="Navigation">
         <a href="#journal" data-tab="journal"><span class="ic">🍽️</span>Journal</a>
+        <a href="#bilan" data-tab="bilan"><span class="ic">📊</span>Bilan</a>
         <a href="#poids" data-tab="poids"><span class="ic">⚖️</span>Poids</a>
         <a href="#plan" data-tab="plan"><span class="ic">📋</span>Mon plan</a>
         <a href="#aliments" data-tab="aliments"><span class="ic">🔎</span>Aliments</a>
@@ -50,9 +51,26 @@
       <button data-t="repos">🛋️ Sans sport<small id="tRest"></small></button>
       <button data-t="sport">🏋️ Crosstraining<small id="tSport"></small></button>
     </div>
+    <form class="qweigh" id="qW">
+      <span class="ic">⚖️</span><span class="lab" id="qWLabel">Pesée du matin</span>
+      <input type="text" id="qKg" inputmode="decimal" pattern="[0-9]{2,3}([.,][0-9]{1,2})?" aria-label="Poids en kg" required><span class="u">kg</span>
+      <button class="btn small primary" type="submit">OK</button>
+      <span class="now" id="qWNow"></span>
+    </form>
     <div class="card sum" id="sum"></div>
     <div id="tpl"></div>
     <div id="meals"></div>
+  </main>
+
+  <!-- BILAN -->
+  <main class="view wrap hidden" id="v-bilan">
+    <div class="view-title"><h1>📊 Bilan de la semaine</h1></div>
+    <div class="daybar">
+      <button class="iconbtn" id="bPrev" aria-label="Semaine précédente">◀</button>
+      <div class="dl" id="bLabel"></div>
+      <button class="iconbtn" id="bNext" aria-label="Semaine suivante">▶</button>
+    </div>
+    <div id="bBody"></div>
   </main>
 
   <!-- POIDS -->
@@ -195,8 +213,8 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
-<script src="config.js?v=2"></script>
-<script src="data.js?v=2"></script>
-<script src="app.js?v=2"></script>
+<script src="config.js?v=3"></script>
+<script src="data.js?v=3"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>

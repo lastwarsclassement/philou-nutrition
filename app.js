@@ -105,12 +105,13 @@ async function start() {
 }
 
 /* ========== Navigation par onglets ========== */
-const TABS = ['journal', 'poids', 'plan', 'aliments'];
+const TABS = ['journal', 'bilan', 'poids', 'plan', 'aliments'];
 function route() {
   const t = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'journal';
   TABS.forEach(x => $('v-' + x).classList.toggle('hidden', x !== t));
   document.querySelectorAll('.tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === t));
   if (t === 'poids') renderWeights();
+  if (t === 'bilan') renderBilan();
   window.scrollTo(0, 0);
 }
 window.addEventListener('hashchange', () => { if (started) route(); });
@@ -141,6 +142,7 @@ function renderDayBar() {
 
 function renderJournal() {
   renderDayBar();
+  renderQuickWeigh();
   const s = state.settings;
   $('tRest').textContent = fr0(s.kcal_rest) + ' kcal';
   $('tSport').textContent = fr0(s.kcal_sport) + ' kcal';
@@ -361,14 +363,150 @@ function renderChart() {
   </svg><div class="lg"><span><i style="background:var(--g)"></i>Pesée du matin</span><span><i style="background:var(--k)"></i>Moyenne sur 7 jours</span></div>`;
 }
 
+async function saveWeight(date, raw) {
+  const kg = Math.round(parseFloat(String(raw).replace(',', '.')) * 100) / 100;
+  if (!date || !(kg >= 20 && kg <= 400)) { toast('Poids invalide (ex. 81,4)', true); return false; }
+  const {error} = await sb.from('weights').upsert({user_id: OWNER, date, kg});
+  if (error) { fail(error); return false; }
+  state.weights = state.weights.filter(w => w.date !== date).concat({date, kg}).sort((a, b) => a.date < b.date ? -1 : 1);
+  toast(`Pesée enregistrée : ${fr(kg)} kg ✔`);
+  return true;
+}
+const weightOn = d => state.weights.find(w => w.date === d);
+
 $('wForm').addEventListener('submit', async e => {
   e.preventDefault();
-  const date = $('wDate').value, kg = Math.round(parseFloat(String($('wKg').value).replace(',', '.')) * 100) / 100;
-  if (!date || !(kg >= 20 && kg <= 400)) return toast('Poids invalide', true);
-  const {error} = await sb.from('weights').upsert({user_id: OWNER, date, kg});
-  if (error) return fail(error);
-  state.weights = state.weights.filter(w => w.date !== date).concat({date, kg}).sort((a, b) => a.date < b.date ? -1 : 1);
-  $('wKg').value = ''; renderWeights(); toast('Pesée enregistrée ✔');
+  if (await saveWeight($('wDate').value, $('wKg').value)) { $('wKg').value = ''; renderWeights(); }
+});
+
+/* Pesée rapide depuis le journal */
+function renderQuickWeigh() {
+  const w = weightOn(state.date);
+  $('qWLabel').textContent = state.date === today() ? 'Pesée du matin' : 'Pesée du ' + shortDate(state.date);
+  $('qKg').value = '';
+  $('qKg').placeholder = w ? fr(w.kg) : (state.weights.length ? fr(state.weights[state.weights.length - 1].kg) : '81,8');
+  $('qWNow').innerHTML = w ? `✔ <b>${fr(w.kg)} kg</b> enregistré` : '<span class="muted">pas encore pesé</span>';
+}
+$('qW').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (await saveWeight(state.date, $('qKg').value)) renderQuickWeigh();
+});
+
+/* ========== BILAN DE LA SEMAINE ========== */
+const MAINT = {repos: 2290, sport: 2690}; // dépense de maintien estimée (PDF)
+const mondayOf = s => { const d = parseIso(s); const wd = (d.getDay() + 6) % 7; d.setDate(d.getDate() - wd); return iso(d); };
+state.week = mondayOf(today());
+
+async function renderBilan() {
+  const mon = state.week, sun = addDays(mon, 6), t = today();
+  const days7 = [...Array(7)].map((_, i) => addDays(mon, i));
+  const fmt = s => parseIso(s).toLocaleDateString('fr-FR', {day: 'numeric', month: 'long'});
+  const sameM = parseIso(mon).getMonth() === parseIso(sun).getMonth();
+  const range = sameM ? `${parseIso(mon).getDate()} au ${fmt(sun)}` : `${fmt(mon)} au ${fmt(sun)}`;
+  $('bLabel').innerHTML = `Du ${range}<small>📅 ${mon === mondayOf(t) ? 'cette semaine' : mon === addDays(mondayOf(t), -7) ? 'semaine dernière' : 'semaine passée'}</small>`;
+  $('bNext').disabled = mon >= mondayOf(t);
+  $('bBody').innerHTML = '<p class="muted" style="text-align:center"><span class="spinner"></span></p>';
+  let en, dy;
+  try {
+    [en, dy] = await Promise.all([
+      sb.from('entries').select('date,grams,p100,g100,l100,kcal100').gte('date', mon).lte('date', sun),
+      sb.from('days').select('date,day_type').gte('date', mon).lte('date', sun)
+    ]);
+    if (en.error) throw en.error; if (dy.error) throw dy.error;
+  } catch (e) { $('bBody').innerHTML = ''; return fail(e); }
+  if (mon !== state.week) return;
+
+  const s = state.settings;
+  const rows = days7.map(d => {
+    const type = (dy.data.find(x => x.date === d) || {}).day_type || 'repos';
+    const list = en.data.filter(e => e.date === d).map(e => ({grams: +e.grams, p100: +e.p100, g100: +e.g100, l100: +e.l100, kcal100: +e.kcal100}));
+    const v = sumVals(list);
+    const tgt = type === 'sport' ? s.kcal_sport : s.kcal_rest;
+    return {d, type, logged: list.length > 0, v, tgt, future: d > t};
+  });
+  const logged = rows.filter(r => r.logged);
+  const n = logged.length;
+  const avg = k => n ? logged.reduce((a, r) => a + r.v[k], 0) / n : 0;
+  const onTarget = logged.filter(r => Math.abs(r.v.K - r.tgt) <= r.tgt * 0.1).length;
+  const sportDays = rows.filter(r => r.type === 'sport').length;
+  const deficit = logged.reduce((a, r) => a + (MAINT[r.type] - r.v.K), 0);
+  const vsTarget = logged.reduce((a, r) => a + (r.v.K - r.tgt), 0);
+
+  // Poids de la semaine
+  const wk = state.weights.filter(w => w.date >= mon && w.date <= sun);
+  const wkPrev = state.weights.filter(w => w.date >= addDays(mon, -7) && w.date < mon);
+  const wAvg = wk.length ? mean(wk.map(w => w.kg)) : null, wPrev = wkPrev.length ? mean(wkPrev.map(w => w.kg)) : null;
+  const wDiff = wAvg != null && wPrev != null ? wAvg - wPrev : null;
+
+  // Message de synthèse
+  const msgs = [];
+  if (!n) msgs.push(['info', '📝', 'Aucun repas saisi cette semaine', 'Remplis le journal pour obtenir un bilan.']);
+  else {
+    if (vsTarget > 0 && vsTarget / n > 150) msgs.push(['warn', '🍕', `En moyenne +${fr0(vsTarget / n)} kcal par jour au-dessus de la cible`, 'Regarde les jours en rouge dans le tableau pour voir où ça coince.']);
+    else if (vsTarget < 0 && -vsTarget / n > 250) msgs.push(['warn', '🥗', `En moyenne ${fr0(-vsTarget / n)} kcal par jour sous la cible`, 'Attention à ne pas trop manger peu : ça fatigue et ça fait perdre du muscle, surtout avec le crosstraining.']);
+    else msgs.push(['good', '🎯', 'Apports proches de la cible', `${onTarget} jour${onTarget > 1 ? 's' : ''} sur ${n} à ±10 % de la cible. Bravo !`]);
+    if (avg('P') < s.protein * 0.85) msgs.push(['warn', '🍗', `Protéines un peu justes : ${fr0(avg('P'))} g par jour en moyenne`, `L’objectif est ${s.protein} g : ajoute du skyr, du poulet, du thon ou des œufs.`]);
+  }
+  if (wDiff != null) {
+    const loss = -wDiff;
+    msgs.push(loss > 0.5 ? ['warn', '⚡', `Poids moyen −${fr(loss)} kg par rapport à la semaine d’avant`, 'C’est rapide : si ça dure, ajoute 100 à 150 kcal par jour.']
+      : loss >= 0.3 ? ['good', '📉', `Poids moyen −${fr(loss)} kg par rapport à la semaine d’avant`, 'Pile dans le rythme visé (300 à 450 g par semaine).']
+      : loss > 0 ? ['info', '🐢', `Poids moyen −${fr(loss)} kg par rapport à la semaine d’avant`, 'Ça descend doucement, on juge sur 2 à 3 semaines.']
+      : ['info', '↔️', `Poids moyen ${loss === 0 ? 'stable' : '+' + fr(-loss) + ' kg'} par rapport à la semaine d’avant`, 'Une semaine ne suffit pas pour conclure (eau, sel). On regarde la tendance.']);
+  } else if (!wk.length) msgs.push(['info', '⚖️', 'Aucune pesée cette semaine', 'Pèse-toi le matin, au moins 3 fois par semaine, pour suivre la tendance.']);
+
+  // Graphique en barres
+  const W = 640, H = 220, ml = 40, mr = 10, mt = 14, mb = 34;
+  const maxK = Math.max(2800, ...rows.map(r => r.v.K), ...rows.map(r => r.tgt)) * 1.05;
+  const bw = (W - ml - mr) / 7;
+  const Y = k => mt + (1 - k / maxK) * (H - mt - mb);
+  let grid = '';
+  for (let k = 0; k <= maxK; k += 500) grid += `<line x1="${ml}" x2="${W - mr}" y1="${Y(k)}" y2="${Y(k)}" stroke="var(--line)" stroke-width="1.2"/><text x="${ml - 6}" y="${Y(k) + 4}" text-anchor="end" font-size="11" fill="var(--muted)" font-weight="700">${k}</text>`;
+  const bars = rows.map((r, i) => {
+    const x = ml + i * bw + bw * 0.18, w = bw * 0.64;
+    const over = r.v.K > r.tgt * 1.1, col = !r.logged ? 'none' : over ? 'var(--p)' : 'var(--k)';
+    const lbl = parseIso(r.d).toLocaleDateString('fr-FR', {weekday: 'short'}).replace('.', '');
+    return `${r.logged ? `<rect x="${x}" y="${Y(r.v.K)}" width="${w}" height="${Y(0) - Y(r.v.K)}" rx="6" fill="${col}" stroke="var(--ink)" stroke-width="2"><title>${fr0(r.v.K)} kcal / ${fr0(r.tgt)}</title></rect>` : ''}
+      <line x1="${x - 4}" x2="${x + w + 4}" y1="${Y(r.tgt)}" y2="${Y(r.tgt)}" stroke="var(--ink)" stroke-width="2.5" stroke-dasharray="5 3"/>
+      <text x="${x + w / 2}" y="${H - 16}" text-anchor="middle" font-size="12" font-weight="800" fill="var(--ink)">${lbl}</text>
+      <text x="${x + w / 2}" y="${H - 3}" text-anchor="middle" font-size="11">${r.type === 'sport' ? '🏋️' : ''}</text>`;
+  }).join('');
+
+  const tbl = rows.map(r => {
+    const diff = r.v.K - r.tgt, cls = !r.logged ? 'muted' : Math.abs(diff) <= r.tgt * 0.1 ? 'cl' : diff > 0 ? 'cp' : 'cg';
+    return `<tr data-d="${r.d}"><td>${cap(parseIso(r.d).toLocaleDateString('fr-FR', {weekday: 'short', day: 'numeric'}))} ${r.type === 'sport' ? '🏋️' : ''}</td>
+      <td>${r.logged ? fr0(r.v.K) : '–'}</td><td>${r.logged ? fr0(r.v.P) : '–'}</td><td class="hide-s">${r.logged ? fr0(r.v.G) : '–'}</td><td class="hide-s">${r.logged ? fr0(r.v.L) : '–'}</td>
+      <td class="${cls}"><b>${r.logged ? (diff > 0 ? '+' : '') + fr0(diff) : r.future ? '' : '–'}</b></td>
+      <td>${weightOn(r.d) ? fr(weightOn(r.d).kg) : ''}</td></tr>`;
+  }).join('');
+
+  $('bBody').innerHTML = `
+    <div class="stats bstats">
+      <div class="stat"><b class="ck">${n ? fr0(avg('K')) : '–'}</b><small>kcal / jour en moyenne</small></div>
+      <div class="stat"><b class="cp">${n ? fr0(avg('P')) : '–'}</b><small>g de protéines / jour</small></div>
+      <div class="stat"><b>${n}/7</b><small>jour${n > 1 ? 's' : ''} saisi${n > 1 ? 's' : ''}</small></div>
+      <div class="stat"><b>${onTarget}</b><small>jour${onTarget > 1 ? 's' : ''} dans la cible (±10 %)</small></div>
+      <div class="stat"><b>${sportDays}/3</b><small>séances crosstraining</small></div>
+      <div class="stat"><b class="${deficit >= 0 ? 'cl' : 'cp'}">${n ? (deficit >= 0 ? '−' : '+') + fr0(Math.abs(deficit)) : '–'}</b><small>kcal vs maintien${n ? ` ≈ ${fr(Math.abs(deficit) / 7700 * 1000, 0)} g de gras` : ''}</small></div>
+    </div>
+    ${msgs.map(m => `<div class="card verdict ${m[0]}"><span class="ic">${m[1]}</span><div><h3>${m[2]}</h3><p>${m[3]}</p></div></div>`).join('')}
+    <div class="card chart"><h3 style="margin:0 0 8px">🔥 Calories par jour</h3>
+      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Calories par jour de la semaine">${grid}${bars}</svg>
+      <div class="lg"><span><i style="background:var(--k)"></i>Consommé</span><span><i style="background:var(--p)"></i>Plus de 10 % au-dessus</span><span>┅ Cible du jour</span></div></div>
+    <div class="card" style="margin-top:18px;padding:0;overflow:hidden">
+      <table class="ptable btable"><thead><tr><th>Jour</th><th>kcal</th><th>Prot.</th><th class="hide-s">Gluc.</th><th class="hide-s">Lip.</th><th>Écart</th><th>Poids</th></tr></thead><tbody>${tbl}</tbody></table>
+      <p class="muted" style="margin:0;padding:10px 14px;font-size:.85rem">👆 Clique sur un jour pour ouvrir son journal.</p></div>
+    <div class="stats" style="margin-top:18px">
+      <div class="stat"><b>${wAvg != null ? fr(wAvg) : '–'}</b><small>poids moyen (${wk.length} pesée${wk.length > 1 ? 's' : ''})</small></div>
+      <div class="stat"><b>${wPrev != null ? fr(wPrev) : '–'}</b><small>semaine d’avant</small></div>
+      <div class="stat"><b class="${wDiff == null ? '' : wDiff <= 0 ? 'cl' : 'cp'}">${wDiff == null ? '–' : (wDiff > 0 ? '+' : wDiff < 0 ? '−' : '') + fr(Math.abs(wDiff))}</b><small>écart (kg)</small></div>
+    </div>`;
+}
+$('bPrev').addEventListener('click', () => { state.week = addDays(state.week, -7); renderBilan(); });
+$('bNext').addEventListener('click', () => { if (state.week < mondayOf(today())) { state.week = addDays(state.week, 7); renderBilan(); } });
+$('bBody').addEventListener('click', e => {
+  const tr = e.target.closest('tr[data-d]'); if (!tr) return;
+  state.date = tr.dataset.d; location.hash = '#journal'; loadDay();
 });
 $('wList').addEventListener('click', async e => {
   const b = e.target.closest('[data-d]'); if (!b) return;
