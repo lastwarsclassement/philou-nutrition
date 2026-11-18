@@ -125,6 +125,14 @@ $('aSignup').addEventListener('click', async () => {
   if (!data.session) authMsg('Compte créé, mais il doit être confirmé par e-mail avant la première connexion.', true);
 });
 $('logout').addEventListener('click', () => sb.auth.signOut());
+$('aPassToggle').addEventListener('click', () => {
+  const inp = $('aPass'), show = inp.type === 'password';
+  inp.type = show ? 'text' : 'password';
+  $('aPassToggle').setAttribute('aria-pressed', show);
+  $('aPassToggle').setAttribute('aria-label', show ? 'Masquer le mot de passe' : 'Afficher le mot de passe');
+  $('aPassToggle').innerHTML = show ? '🙈 <span>Masquer</span>' : '👁️ <span>Afficher</span>';
+  inp.focus();
+});
 
 /* ---- Profil et calcul des consignes (même méthode que le plan de Philou) ---- */
 const PHILOU = {sex: 'H', age: 44, height_cm: 175, weight_start: 81.8, activity: 1.35, sessions: 3};

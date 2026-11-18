@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 
@@ -33,7 +33,8 @@
     <p class="muted" style="margin:0">Chacun a son propre espace : ton journal, tes pesées et ton plan ne sont visibles que par toi.</p>
     <form class="auth-form" id="authForm">
       <label class="field">E-mail<input type="email" id="aEmail" autocomplete="email" required></label>
-      <label class="field">Mot de passe<input type="password" id="aPass" autocomplete="current-password" minlength="6" required></label>
+      <label class="field">Mot de passe
+        <span class="pw"><input type="password" id="aPass" autocomplete="current-password" minlength="6" required><button type="button" class="pw-toggle" id="aPassToggle" aria-label="Afficher le mot de passe" aria-pressed="false">👁️ <span>Afficher</span></button></span></label>
       <div class="auth-actions">
         <button class="btn primary" type="submit">Se connecter</button>
         <button class="btn" type="button" id="aSignup">Créer un compte</button>
@@ -267,9 +268,9 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
-<script src="config.js?v=6"></script>
-<script src="data.js?v=6"></script>
+<script src="config.js?v=7"></script>
+<script src="data.js?v=7"></script>
 <script src="ciqual.js?v=2"></script>
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>
